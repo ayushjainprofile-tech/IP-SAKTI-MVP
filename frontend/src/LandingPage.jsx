@@ -16,10 +16,7 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <section className="landing-page" id="home">
-        <div className="video-container">
-          <video autoPlay loop muted playsInline className="bg-video">
-            <source src={heroBg} type="video/mp4" />
-          </video>
+          <video autoPlay loop muted playsInline src={heroBg} className="bg-video" />
           <div className="video-overlay"></div>
         </div>
 
