@@ -1,0 +1,7 @@
+Put only public or authorized Traditional Knowledge source PDFs in this folder.
+
+Do not scrape or copy the proprietary full TKDL database.
+
+After adding PDFs, run:
+
+python ingest_tk.py

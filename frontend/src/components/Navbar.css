@@ -1,0 +1,191 @@
+/* Navbar Container */
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 70px;
+  background: rgba(38, 51, 36, 0.85); /* Natural Dark Forest glass */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(229, 230, 211, 0.15);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  transition: transform 0.3s ease, background 0.3s ease;
+}
+
+.navbar--hidden {
+  transform: translateY(-100%);
+}
+
+.navbar-container {
+  width: min(1250px, 92vw);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Logo */
+.navbar-logo a {
+  text-decoration: none;
+}
+
+.logo-text {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: #f2f3e4;
+  letter-spacing: -0.5px;
+}
+
+/* Desktop Links */
+.navbar-links {
+  display: flex;
+  gap: 32px;
+}
+
+.nav-link {
+  color: #c1c7a6;
+  text-decoration: none;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+/* Buttons styled identically to anchor nav-links */
+.nav-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: #c1c7a6;
+  font-size: 14px;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.nav-link:hover, .nav-link.active,
+.nav-link-btn:hover {
+  color: #f2f3e4;
+}
+
+/* Desktop Auth Buttons */
+.navbar-auth {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.nav-btn {
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.btn-login {
+  color: #e5e6d3;
+  border: 1px solid rgba(229, 230, 211, 0.3);
+}
+
+.btn-login:hover {
+  color: #ffffff;
+  background: rgba(229, 230, 211, 0.1);
+}
+
+.btn-signup {
+  background: #e5e6d3;
+  color: #2b3323;
+  border: 1px solid #d4d6bf;
+}
+
+.btn-signup:hover {
+  background: #f2f3e4;
+  transform: translateY(-1px);
+}
+
+/* Mobile Icon */
+.mobile-menu-icon {
+  display: none;
+  color: #f2f3e4;
+  cursor: pointer;
+}
+
+/* Mobile Menu Overlay */
+.mobile-menu {
+  position: absolute;
+  top: 70px;
+  left: 0;
+  width: 100%;
+  background: rgba(38, 51, 36, 0.95);
+  backdrop-filter: blur(15px);
+  border-bottom: 1px solid rgba(229, 230, 211, 0.15);
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-links {
+  width: min(1250px, 92vw);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mobile-link {
+  color: #c1c7a6;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 8px 0;
+}
+
+.mobile-link.active {
+  color: #f2f3e4;
+}
+
+.mobile-auth-divider {
+  height: 1px;
+  background: rgba(229, 230, 211, 0.15);
+  margin: 8px 0;
+}
+
+.mobile-btn {
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px 0;
+  text-align: center;
+  border-radius: 6px;
+}
+
+.mobile-btn.btn-login {
+  color: #f2f3e4;
+  border: 1px solid rgba(229, 230, 211, 0.3);
+}
+
+.mobile-btn.btn-signup {
+  background: #e5e6d3;
+  color: #2b3323;
+  margin-top: 8px;
+}
+
+/* Responsive Breakpoint */
+@media (max-width: 800px) {
+  .navbar-links, .navbar-auth {
+    display: none;
+  }
+  .mobile-menu-icon {
+    display: block;
+  }
+}
