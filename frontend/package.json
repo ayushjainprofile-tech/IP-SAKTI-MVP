@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node copy-video.js && vite",
+    "build": "node copy-video.js && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
