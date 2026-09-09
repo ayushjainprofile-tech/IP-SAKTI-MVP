@@ -5,7 +5,7 @@ import Navbar from "./components/Navbar";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 
-import heroBgVideo from "../landing-page/bacground white white sheet.mp4";
+import heroBgVideo from "../landing-page/hero-bg-video.mp4";
 
 const API_ENDPOINTS = [
   "http://localhost:8001",

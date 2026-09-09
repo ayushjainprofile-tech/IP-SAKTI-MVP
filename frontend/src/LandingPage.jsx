@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import heroBg from '../landing-page/watermark-removed-Ek_Rishi_Muni_kuchh_Granth_lik.mp4';
+import heroBg from '../landing-page/hero-bg-video.mp4';
 import './LandingPage.css';
 
 export default function LandingPage() {
@@ -16,6 +16,7 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <section className="landing-page" id="home">
+        <div className="video-container">
           <video autoPlay loop muted playsInline src={heroBg} className="bg-video" />
           <div className="video-overlay"></div>
         </div>

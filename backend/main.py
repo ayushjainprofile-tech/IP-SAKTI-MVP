@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, Iterable, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -66,7 +65,7 @@ except Exception as e:
         query,
         documents,
         top_k=5,
-        min_score=0.35
+        min_similarity=0.35
     ):
         return []
 
@@ -99,7 +98,7 @@ logger = logging.getLogger(
 
 OLLAMA_MODEL = os.getenv(
     "OLLAMA_MODEL",
-    "llama3.2:1b"
+    "qwen2.5:1.5b"
 )
 
 # Single source of truth for API version.
@@ -166,14 +165,6 @@ app = FastAPI(
         "Evidence-first IP / Traditional Knowledge / "
         "Access and Benefit Sharing assessment prototype."
     )
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 
@@ -1487,17 +1478,6 @@ def search_corpus(
                 item
             )
 
-    # Fast pre-filtering: filter candidate chunks in milliseconds before detailed scoring
-    ing_lower = [str(ing).lower() for ing in ingredients if str(ing).strip()]
-    if ing_lower or query_tokens:
-        fast_candidates = []
-        for item in candidates:
-            t_lower = get_document_text(item).lower()
-            if any(ing in t_lower for ing in ing_lower) or any(tok in t_lower for tok in query_tokens):
-                fast_candidates.append(item)
-        if fast_candidates:
-            candidates = fast_candidates[:200]
-
     logger.info(
         "Domain-aligned candidates: %d",
         len(candidates)
@@ -1660,7 +1640,7 @@ def search_corpus(
         semantic_documents = []
 
         for index, item in enumerate(
-            candidates[:60]
+            candidates
         ):
 
             item_id = get_document_id(
@@ -1720,7 +1700,7 @@ def search_corpus(
                     10
                 ),
 
-                min_score=(
+                min_similarity=(
                     MIN_SEMANTIC_SIMILARITY
                 )
             )
@@ -3212,28 +3192,23 @@ Never convert retrieval signals into legal conclusions.
 """
 
     try:
-        import concurrent.futures
 
-        def _do_chat():
-            return ollama.chat(
-                model=OLLAMA_MODEL,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                format="json",
-                options={
-                    "num_predict": 300,
-                    "temperature": 0.2,
-                    "num_ctx": 2048,
+        response = ollama.chat(
+
+            model=OLLAMA_MODEL,
+
+            messages=[
+                {
+                    "role":
+                        "user",
+
+                    "content":
+                        prompt
                 }
-            )
+            ],
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_do_chat)
-            response = future.result(timeout=4)
+            format="json"
+        )
 
         content = (
             response
