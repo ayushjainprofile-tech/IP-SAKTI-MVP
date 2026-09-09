@@ -1,10 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 
-const src = path.resolve('landing-page/bacground white white sheet.mp4');
-const dst1 = path.resolve('src/white-sheet-bg.mp4');
-const dst2 = path.resolve('landing-page/hero-bg-video.mp4');
+const rishiMuniSrc = path.resolve('landing-page/watermark-removed-Ek_Rishi_Muni_kuchh_Granth_lik.mp4');
+const whiteSheetSrc = path.resolve('landing-page/bacground white white sheet.mp4');
 
-fs.copyFileSync(src, dst1);
-fs.copyFileSync(src, dst2);
-console.log('Successfully copied white sheet video!');
+const rishiMuniDst = path.resolve('src/rishi-muni-bg.mp4');
+const whiteSheetDst = path.resolve('src/white-sheet-bg.mp4');
+
+fs.copyFileSync(rishiMuniSrc, rishiMuniDst);
+fs.copyFileSync(whiteSheetSrc, whiteSheetDst);
+console.log('Successfully copied both Rishi Muni and White Sheet videos!');
