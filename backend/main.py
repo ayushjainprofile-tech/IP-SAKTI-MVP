@@ -1024,7 +1024,26 @@ def classify_product(
 
         tk_status = "UNKNOWN"
 
+    domains = detect_domains(product)
+
+    label = f"{product.product_type} ({'TK Based' if tk_status == 'YES' else 'Standard Assessment'})"
+
+    reasons = [
+        f"Product Name: {product.product_name}",
+        f"Product Type: {product.product_type}",
+        f"Stated Purpose: {product.purpose}",
+        f"Jurisdiction: {product.jurisdiction}",
+        f"Traditional Knowledge Status: {tk_status}",
+        f"Routed Knowledge Domains: {', '.join(domains)}"
+    ]
+
     return {
+
+        "label":
+            label,
+
+        "reasons":
+            reasons,
 
         "product_type":
             product.product_type,
@@ -3502,6 +3521,18 @@ def calculate_confidence(
         "score":
             score,
 
+        "label":
+            f"{level} Confidence",
+
+        "meaning":
+            (
+                "High confidence: Retrieved evidence directly supports claims."
+                if level == "HIGH"
+                else "Medium confidence: Evidence retrieved with partial coverage."
+                if level == "MEDIUM"
+                else "Low confidence: Material requires manual verification."
+            ),
+
         "basis":
             basis,
 
@@ -3657,6 +3688,9 @@ def sanitize_evidence(
 
     for item in evidence:
 
+        source_name = item.get("source", "Unknown source")
+        url_val = item.get("url") or get_document_url(item) or None
+
         output.append({
 
             "id":
@@ -3664,15 +3698,22 @@ def sanitize_evidence(
                     "id"
                 ),
 
+            "title":
+                source_name,
+
             "domain":
                 item.get(
                     "domain"
                 ),
 
             "source":
-                item.get(
-                    "source"
-                ),
+                source_name,
+
+            "source_url":
+                url_val or "#",
+
+            "url":
+                url_val,
 
             "page":
                 item.get(
@@ -6519,6 +6560,15 @@ def analyze_product(
         )
         else {}
     )
+
+    answer_text = (
+        ai_assessment.get("summary")
+        or ai_assessment.get("evidence_interpretation")
+        or reasoning.get("summary")
+        or "Assessment completed based on retrieved evidence."
+    ) if isinstance(ai_assessment, dict) else reasoning.get("summary", "Assessment completed based on retrieved evidence.")
+    
+    reasoning["answer"] = answer_text
 
     recommended_verification = []
 

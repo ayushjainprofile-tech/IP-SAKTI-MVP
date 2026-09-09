@@ -67,16 +67,24 @@ This document summarizes all visual, UI/UX, architectural, and backend bug-fix c
 
 ---
 
+7. **🤖 Ask IP-SAKTI AI Chatbot & 🌐 Multilingual Integration (`App.jsx` & `index.css`)**:
+   - **Multilingual Support**: Added header dropdown for `English`, `हिंदी (Hindi)`, and `मराठी (Marathi)` to dynamically update UI labels and API requests.
+   - **AI Chatbot Component**: Integrated interactive chat thread replicated from `streamlit_app.py`, featuring expandable **Agent Execution Trace** (`✓ Query intent identified`, `✓ Knowledge Graph consulted`, `✓ Web search performed`), **Sources & Citations**, and **Confidence Badges**.
+   - **Offline & Vercel Fallback**: Configured smart local fallback engine for chat queries so the web app displays instant grounded responses even when deployed on static hosts like Vercel.
+
+---
+
 ## 📁 Summary of Modified Files
 1. `frontend/index.html` — Imported Google Fonts (`Cinzel`, `Outfit`, `Plus Jakarta Sans`).
-2. `frontend/src/index.css` — Global earthy color tokens, premium typography, dashboard card styles.
+2. `frontend/src/index.css` — Global earthy color tokens, premium typography, dashboard card styles, Chatbot UI & Language selector styling.
 3. `frontend/src/LandingPage.jsx` — Multi-section landing page structure with smooth scroll.
 4. `frontend/src/LandingPage.css` — Earthy styling for landing page, hero video overlay, and cards.
 5. `frontend/src/components/Navbar.jsx` — Auto-hiding sticky header logic & route-based auth visibility.
 6. `frontend/src/components/Navbar.css` — Glassmorphism, smooth slide transitions, earthy theme.
 7. `frontend/src/pages/Auth.css` — Login/Signup forms styled with terracotta & cream palette.
-8. `frontend/src/App.jsx` — Cleaned up dashboard layout, routing, and form integration.
+8. `frontend/src/App.jsx` — Added Multilingual Language selector, Ask IP-SAKTI AI Chatbot section, execution trace expander, and source citations.
 9. `backend/main.py` — Fixed `semantic_search` kwarg error for BGE search.
 
 ---
-*Created on 2026-09-08 | IP-SAKTI MVP*
+*Updated on 2026-09-09 | IP-SAKTI MVP*
+

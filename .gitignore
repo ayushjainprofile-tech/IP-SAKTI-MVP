@@ -44,3 +44,5 @@ Thumbs.db
 
 # Local model/cache files
 .cache/
+.vercel
+.env*

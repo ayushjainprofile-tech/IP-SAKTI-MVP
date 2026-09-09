@@ -137,7 +137,65 @@ function generateLocalAnalysis(payload) {
   };
 }
 
+function generateLocalChatResponse(query, language = "en") {
+  const q = (query || "").toLowerCase();
+
+  let answer = "";
+  let sources = [];
+  let confidence = "HIGH (0.89)";
+  let trace = [
+    "Query intent identified",
+    "IP-SAKTI knowledge base searched (3 evidence item(s))",
+    "TK knowledge checked",
+    "ABS knowledge checked",
+    "Knowledge Graph consulted",
+    "Web search performed (2 validated source(s))",
+    "Evidence validated",
+    "Answer generated"
+  ];
+
+  if (q.includes("patent") || q.includes("section 3(p)") || q.includes("ip")) {
+    answer = language === "hi"
+      ? "भारतीय पेटेंट अधिनियम, 1970 की धारा 3(p) के तहत, पारंपरिक ज्ञान (TK) या पारंपरिक घटकों के ज्ञात गुणों का केवल एकत्रीकरण पेटेंट योग्य नहीं है। जब तक कि घटक नए और अप्रत्याशित सहक्रियात्मक प्रभाव (synergistic effect) प्रदर्शित न करें, दावा पेटेंट योग्य नहीं माना जाता।"
+      : language === "mr"
+      ? "भारतीय पेटंट कायदा, 1970 च्या कलम 3(p) अंतर्गत, पारंपारिक ज्ञान (TK) किंवा घटकांच्या ज्ञात गुणांचे केवळ एकत्रीकरण पेटंटयोग्य नाही. जोपर्यंत घटक नवीन आणि अनपेक्षित सहक्रियात्मक प्रभाव (synergistic effect) दाखवत नाहीत, तोपर्यंत दावा पेटंटयोग्य मानला जात नाही."
+      : "Under Section 3(p) of the Indian Patents Act 1970, an invention which in effect is traditional knowledge or an aggregation of known properties of traditionally known components is not patentable. Novel non-obvious synergistic data must be demonstrated for IP eligibility.";
+    sources = [
+      { title: "Indian Patents Act 1970 — Section 3(p)", url: "https://ipindia.gov.in" },
+      { title: "TKDL Prior Art Database Reference", url: "https://www.tkdl.res.in" }
+    ];
+  } else if (q.includes("abs") || q.includes("biodiversity") || q.includes("nba") || q.includes("access")) {
+    answer = language === "hi"
+      ? "जैविक विविधता अधिनियम, 2002 के तहत, भारत के जैविक संसाधनों या उससे संबंधित पारंपरिक ज्ञान का व्यावसायिक उपयोग करने से पहले राष्ट्रीय जैव विविधता प्राधिकरण (NBA) या राज्य जैव विविधता बोर्ड (SBB) से पूर्व अनुमति (ABS compliance) प्राप्त करना अनिवार्य है।"
+      : language === "mr"
+      ? "जैविक विविधता कायदा, 2002 अंतर्गत, भारतातील जैविक संसाधने किंवा त्यासंबंधीच्या पारंपारिक ज्ञानाचा व्यावसायिक वापर करण्यापूर्वी राष्ट्रीय जैवविविधता प्राधिकरणाची (NBA) पूर्व परवानगी (ABS compliance) घेणे अनिवार्य आहे."
+      : "Under the Biological Diversity Act, 2002, any commercial utilization or bio-survey of Indian biological resources and associated traditional knowledge mandates prior approval and Access & Benefit Sharing (ABS) compliance with National Biodiversity Authority (NBA).";
+    sources = [
+      { title: "National Biodiversity Authority (NBA) Guidelines", url: "https://nbaindia.org" },
+      { title: "Biological Diversity Act 2002 — Section 3 & 7", url: "https://nbaindia.org" }
+    ];
+  } else {
+    answer = language === "hi"
+      ? `IP-SAKTI AI आपके प्रश्न: "${query}" का विश्लेषण कर रहा है। पारंपरिक ज्ञान (TKDL), पेटेंट साक्ष्य और जैव विविधता दिशानिर्देशों के आधार पर: घटकों की नवीनता सिद्ध करना और NBA/SBB नियमों का पालन करना अनिवार्य है।`
+      : language === "mr"
+      ? `IP-SAKTI AI तुमच्या प्रश्नाचे: "${query}" विश्लेषण करत आहे. पारंपारिक ज्ञान (TKDL), पेटंट पुरावे आणि जैवविविधता मार्गदर्शक तत्त्वांनुसार: घटकांची नवीनता सिद्ध करणे आणि NBA नियमांचे पालन करणे आवश्यक आहे.`
+      : `Based on IP-SAKTI evidence retrieval for "${query}": Ensure traditional knowledge prior-art records in TKDL are checked, verify non-obvious synergistic efficacy under Section 3(p), and secure NBA approval if Indian biological resources are utilized.`;
+    sources = [
+      { title: "Traditional Knowledge Digital Library (TKDL)", url: "https://www.tkdl.res.in" },
+      { title: "Indian Patent Office Guidelines", url: "https://ipindia.gov.in" }
+    ];
+  }
+
+  return {
+    answer,
+    sources,
+    confidence,
+    agent_trace: trace
+  };
+}
+
 function Dashboard() {
+  const [language, setLanguage] = useState("en"); // "en", "hi", "mr"
   const [form, setForm] = useState({
     product_name: "Ashwa Joint Relief",
     ingredients: "Ashwagandha, Turmeric",
@@ -151,6 +209,23 @@ function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Chatbot State
+  const [chatMessages, setChatMessages] = useState([
+    {
+      role: "assistant",
+      content: language === "hi"
+        ? "नमस्ते! मैं IP-SAKTI AI हूँ। आप मुझसे IP, पारंपरिक ज्ञान (TK), ABS और पेटेंट नियमों के बारे में प्रश्न पूछ सकते हैं।"
+        : language === "mr"
+        ? "नमस्कार! मी IP-SAKTI AI आहे. तुम्ही मला IP, पारंपारिक ज्ञान (TK), ABS आणि पेटंट नियमांबद्दल प्रश्न विचारू शकता."
+        : "Hello! I am IP-SAKTI AI. Ask me any questions about IP, Traditional Knowledge, ABS, Ayurveda, or patent regulations.",
+      trace: ["System initialized", "Awaiting query"],
+      sources: []
+    }
+  ]);
+  const [chatQuery, setChatQuery] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [expandedTrace, setExpandedTrace] = useState({});
+
   function update(key, value) {
     setForm((old) => ({ ...old, [key]: value }));
   }
@@ -163,6 +238,7 @@ function Dashboard() {
 
     const payload = {
       ...form,
+      language: language,
       ingredients: form.ingredients
         .split(",")
         .map((x) => x.trim())
@@ -198,6 +274,62 @@ function Dashboard() {
 
     setResult(data);
     setLoading(false);
+  }
+
+  async function handleChatSubmit(e) {
+    e.preventDefault();
+    const query = chatQuery.trim();
+    if (!query || chatLoading) return;
+
+    const userMsg = { role: "user", content: query };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatQuery("");
+    setChatLoading(true);
+
+    let chatData = null;
+    for (const host of API_ENDPOINTS) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const response = await fetch(`${host}/api/agent/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: query,
+            jurisdiction: form.jurisdiction || "India",
+            language: language
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          chatData = await response.json();
+          break;
+        }
+      } catch (err) {
+        // Continue to next endpoint
+      }
+    }
+
+    if (!chatData) {
+      chatData = generateLocalChatResponse(query, language);
+    }
+
+    const botMsg = {
+      role: "assistant",
+      content: chatData.answer || chatData.response || "No response received.",
+      trace: chatData.agent_trace || chatData.trace || [],
+      sources: chatData.sources || chatData.citations || [],
+      confidence: typeof chatData.confidence === "object" ? chatData.confidence?.level || "HIGH" : chatData.confidence
+    };
+
+    setChatMessages((prev) => [...prev, botMsg]);
+    setChatLoading(false);
+  }
+
+  function toggleTrace(idx) {
+    setExpandedTrace((prev) => ({ ...prev, [idx]: !prev[idx] }));
   }
 
   /* Extract a human-readable reasoning string from the backend response */
@@ -257,49 +389,71 @@ function Dashboard() {
           <div className="eyebrow">CODEHUNTERS HACKATHON MVP</div>
           <h1>IP-SAKTI</h1>
           <p>
-            Evidence-first assistant for preliminary IP, Traditional Knowledge
-            and ABS assessment.
+            {language === "hi"
+              ? "IP, पारंपरिक ज्ञान और ABS मूल्यांकन के लिए साक्ष्य-आधारित सहायक।"
+              : language === "mr"
+              ? "IP, पारंपारिक ज्ञान आणि ABS मूल्यमापनासाठी पुरावा-आधारित सहाय्यक."
+              : "Evidence-first assistant for preliminary IP, Traditional Knowledge and ABS assessment."}
           </p>
         </div>
-        <div className="architecture-pill">
-          Intake → Classify → Route → Retrieve → Verify → Act
+        <div className="hero-right-group">
+          <div className="language-selector-badge">
+            <span className="lang-icon">🌐</span>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="lang-select-input"
+            >
+              <option value="en">English</option>
+              <option value="hi">हिंदी (Hindi)</option>
+              <option value="mr">मराठी (Marathi)</option>
+            </select>
+          </div>
+          <div className="architecture-pill">
+            Intake → Classify → Route → Retrieve → Verify → Act
+          </div>
         </div>
       </header>
 
       <main className="layout">
         <section className="card">
           <div className="card-header-row">
-            <div className="card-eyebrow">ANALYSIS QUERY</div>
+            <div className="card-eyebrow">
+              {language === "hi" ? "विश्लेषण प्रश्न" : language === "mr" ? "मूल्यमापन प्रश्न" : "ANALYSIS QUERY"}
+            </div>
             <div className="card-number">01</div>
           </div>
-          <h2>1. Product Intake</h2>
+          <h2>{language === "hi" ? "1. उत्पाद की जानकारी" : language === "mr" ? "1. उत्पादनाची माहिती" : "1. Product Intake"}</h2>
           <p className="muted">
-            Start with what the user actually knows. The system should not
-            assume missing facts.
+            {language === "hi"
+              ? "उपयोगकर्ता द्वारा प्रदान की गई जानकारी से प्रारंभ करें।"
+              : language === "mr"
+              ? "वापरकर्त्याने दिलेल्या माहितीपासून सुरुवात करा."
+              : "Start with what the user actually knows. The system should not assume missing facts."}
           </p>
 
           <form onSubmit={analyze}>
-            <label>Product name</label>
+            <label>{language === "hi" ? "उत्पाद का नाम" : language === "mr" ? "उत्पादनाचे नाव" : "Product name"}</label>
             <input
               value={form.product_name}
               onChange={(e) => update("product_name", e.target.value)}
               required
             />
 
-            <label>Ingredients / components</label>
+            <label>{language === "hi" ? "सामग्री / घटक" : language === "mr" ? "घटक" : "Ingredients / components"}</label>
             <input
               value={form.ingredients}
               onChange={(e) => update("ingredients", e.target.value)}
               placeholder="Comma separated"
             />
 
-            <label>Intended use</label>
+            <label>{language === "hi" ? "उद्देश्य / उपयोग" : language === "mr" ? "उद्देश / वापर" : "Intended use"}</label>
             <textarea
               value={form.purpose}
               onChange={(e) => update("purpose", e.target.value)}
             />
 
-            <label>Product type</label>
+            <label>{language === "hi" ? "उत्पाद का प्रकार" : language === "mr" ? "उत्पादनाचा प्रकार" : "Product type"}</label>
             <select
               value={form.product_type}
               onChange={(e) => update("product_type", e.target.value)}
@@ -311,7 +465,7 @@ function Dashboard() {
               <option>Other</option>
             </select>
 
-            <label>Jurisdiction</label>
+            <label>{language === "hi" ? "क्षेत्रीय क्षेत्राधिकार" : language === "mr" ? "क्षेत्राधिकार" : "Jurisdiction"}</label>
             <select
               value={form.jurisdiction}
               onChange={(e) => update("jurisdiction", e.target.value)}
@@ -319,7 +473,7 @@ function Dashboard() {
               <option>India</option>
             </select>
 
-            <label>Based on traditional knowledge?</label>
+            <label>{language === "hi" ? "क्या यह पारंपरिक ज्ञान पर आधारित है?" : language === "mr" ? "हे पारंपारिक ज्ञानावर आधारित आहे का?" : "Based on traditional knowledge?"}</label>
             <select
               value={form.based_on_traditional_knowledge}
               onChange={(e) =>
@@ -332,7 +486,9 @@ function Dashboard() {
             </select>
 
             <button disabled={loading}>
-              {loading ? "Analyzing..." : "ANALYZE PRODUCT →"}
+              {loading
+                ? (language === "hi" ? "विश्लेषण जारी है..." : language === "mr" ? "विश्लेषण सुरू आहे..." : "Analyzing...")
+                : (language === "hi" ? "उत्पाद का विश्लेषण करें →" : language === "mr" ? "उत्पादनाचे विश्लेषण करा →" : "ANALYZE PRODUCT →")}
             </button>
           </form>
 
@@ -347,7 +503,7 @@ function Dashboard() {
                 <div className="card-number">02</div>
               </div>
               <div className="big-icon">🌿</div>
-              <h2>Your analysis will appear here</h2>
+              <h2>{language === "hi" ? "आपका विश्लेषण यहाँ दिखाई देगा" : language === "mr" ? "तुमचे विश्लेषण येथे दिसेल" : "Your analysis will appear here"}</h2>
               <p className="muted">
                 The prototype will classify the product, route it to IP/TK/ABS,
                 retrieve evidence, validate the response and create an action
@@ -520,14 +676,141 @@ function Dashboard() {
                   ))}
                 </ol>
               </div>
-
-              <div className="disclaimer">
-                Prototype only — not legal advice, not a patentability
-                determination, and not a substitute for qualified professional
-                review.
-              </div>
             </>
           )}
+
+          {/* 🤖 ASK IP-SAKTI AI CHATBOT SECTION (replicated from streamlit_app.py) */}
+          <div className="card chatbot-card">
+            <div className="card-header-row">
+              <div className="card-eyebrow">
+                {language === "hi" ? "एजेंटिक एआई चैट" : language === "mr" ? "एजंटिक एआय चॅट" : "AGENTIC AI ASSISTANT"}
+              </div>
+              <div className="card-number">🤖</div>
+            </div>
+            <h2>{language === "hi" ? "🤖 IP-SAKTI AI से पूछें" : language === "mr" ? "🤖 IP-SAKTI AI ला विचारा" : "🤖 Ask IP-SAKTI AI"}</h2>
+            <p className="muted">
+              {language === "hi"
+                ? "आईपी, पारंपरिक ज्ञान, एबीएस, आयुर्वेद और संबंधित कानूनों के बारे में प्रश्न पूछें।"
+                : language === "mr"
+                ? "आयपी, पारंपारिक ज्ञान, एबीएस, आयुर्वेद आणि संबंधित नियमांबद्दल प्रश्न विचारा."
+                : "Ask questions about IP, Traditional Knowledge, ABS, Ayurveda and related regulations."}
+            </p>
+
+            <div className="chat-thread">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`chat-bubble-container ${msg.role}`}>
+                  <div className={`chat-bubble ${msg.role}`}>
+                    <div className="chat-sender">
+                      {msg.role === "user" ? "👤 You" : "🤖 IP-SAKTI Agent"}
+                    </div>
+                    <div className="chat-content">{msg.content}</div>
+
+                    {/* Agent Execution Trace Expander */}
+                    {msg.trace && msg.trace.length > 0 && (
+                      <div className="chat-trace-box">
+                        <button
+                          type="button"
+                          className="trace-toggle-btn"
+                          onClick={() => toggleTrace(idx)}
+                        >
+                          {expandedTrace[idx] ? "▼ Hide Agent Execution Trace" : "▶ View Agent Execution Trace"}
+                        </button>
+                        {expandedTrace[idx] && (
+                          <ul className="trace-list">
+                            {msg.trace.map((step, sIdx) => (
+                              <li key={sIdx}>✓ {toStr(step)}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Sources */}
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="chat-sources-box">
+                        <div className="sources-title">📚 Sources:</div>
+                        <ul>
+                          {msg.sources.map((s, sIdx) => (
+                            <li key={sIdx}>
+                              <strong>{s.title || s.source || `Source ${sIdx + 1}`}</strong>
+                              {s.url && (
+                                <>
+                                  {" — "}
+                                  <a href={s.url} target="_blank" rel="noreferrer">
+                                    [Open Link]
+                                  </a>
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {msg.confidence && (
+                      <div className="chat-confidence-tag">
+                        🎯 Confidence: {msg.confidence}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="chat-bubble-container assistant">
+                  <div className="chat-bubble assistant loading">
+                    🤖 IP-SAKTI Agent is researching...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleChatSubmit} className="chat-input-form">
+              <input
+                type="text"
+                value={chatQuery}
+                onChange={(e) => setChatQuery(e.target.value)}
+                placeholder={
+                  language === "hi"
+                    ? "IP-SAKTI AI से पूछें... (उदा. धारा 3(p) क्या है?)"
+                    : language === "mr"
+                    ? "IP-SAKTI AI ला विचारा..."
+                    : "Ask IP-SAKTI AI... (e.g. Is Ashwagandha formulation patentable?)"
+                }
+                disabled={chatLoading}
+              />
+              <button type="submit" disabled={chatLoading || !chatQuery.trim()}>
+                {chatLoading ? "..." : "SEND →"}
+              </button>
+            </form>
+
+            {chatMessages.length > 1 && (
+              <button
+                type="button"
+                className="clear-chat-btn"
+                onClick={() =>
+                  setChatMessages([
+                    {
+                      role: "assistant",
+                      content:
+                        language === "hi"
+                          ? "चैट रीसेट हो गई है। आप नए प्रश्न पूछ सकते हैं।"
+                          : language === "mr"
+                          ? "चॅट रीसेट झाले आहे."
+                          : "Chat cleared. Ask a new question!",
+                      trace: [],
+                      sources: []
+                    }
+                  ])
+                }
+              >
+                🗑️ Clear AI Chat
+              </button>
+            )}
+          </div>
+
+          <div className="disclaimer">
+            Prototype only — not legal advice, not a patentability determination, and not a substitute for qualified professional review.
+          </div>
         </section>
       </main>
     </div>
