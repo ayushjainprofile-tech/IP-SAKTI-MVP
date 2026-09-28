@@ -8,6 +8,7 @@ import SignUp from "./pages/SignUp";
 import heroBgVideo from "./white-sheet-bg.mp4";
 
 const API_ENDPOINTS = [
+  "https://full-geese-hope.loca.lt",
   "http://localhost:8001",
   "http://127.0.0.1:8001",
   "http://localhost:8000",
@@ -252,7 +253,10 @@ function Dashboard() {
         const timeoutId = setTimeout(() => controller.abort(), 2000);
         const response = await fetch(`${host}/api/analyze`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Bypass-Tunnel-Reminder": "true"
+          },
           body: JSON.stringify(payload),
           signal: controller.signal,
         });
@@ -293,7 +297,10 @@ function Dashboard() {
         const timeoutId = setTimeout(() => controller.abort(), 3000);
         const response = await fetch(`${host}/api/agent/chat`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Bypass-Tunnel-Reminder": "true"
+          },
           body: JSON.stringify({
             query: query,
             jurisdiction: form.jurisdiction || "India",

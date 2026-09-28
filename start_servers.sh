@@ -20,7 +20,7 @@ if [ ! -d ".venv" ]; then
 fi
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8001 &
+uvicorn main:app --reload --port 8001 --env-file .env &
 BACKEND_PID=$!
 
 # 2. Start Frontend

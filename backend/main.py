@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, Iterable, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -165,6 +166,14 @@ app = FastAPI(
         "Evidence-first IP / Traditional Knowledge / "
         "Access and Benefit Sharing assessment prototype."
     )
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
