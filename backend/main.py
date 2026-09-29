@@ -7452,7 +7452,16 @@ def _chat_web_search(query: str, jurisdiction: str, domains: List[str]) -> Dict[
             evidence_deduplication(raw_results), query=query, domain=domain
         )
         if item.get("validated")
-    ][:AGENTIC_MAX_WEB_EVIDENCE]
+    ]
+    # Validation ranks by authority alone, which put site nav menus and
+    # unrelated clauses first. Rank by how well each source answers the
+    # question and use its best-matching passage (see web_passages.py).
+    try:
+        from web_passages import rank_for_question
+        validated = rank_for_question(validated, query, AGENTIC_MAX_WEB_EVIDENCE)
+    except Exception as exc:
+        logger.warning("Web passage ranking failed: %r", exc)
+        validated = validated[:AGENTIC_MAX_WEB_EVIDENCE]
 
     if validated:
         note = f"Web search performed ({len(validated)} validated source(s))"
