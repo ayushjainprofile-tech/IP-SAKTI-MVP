@@ -34,14 +34,56 @@ DEFAULT_INDIAN_WORDS_PATH = BASE_DIR / "data" / "indian_product_words.txt"
 # ingredient missing from the ontology ("lavender") from an ordinary word
 # that is not an ingredient at all ("latent").
 DEFAULT_INGREDIENT_WORDS_PATH = BASE_DIR / "data" / "ingredient_words.txt"
+# Indian herb / spice names (a subset of indian_product_words.txt); an unknown
+# name found here is a traditional ingredient, not an ordinary word.
+DEFAULT_INDIAN_INGREDIENTS_PATH = BASE_DIR / "data" / "indian_ingredient_words.txt"
 
 # Form/quality words that do not identify an ingredient on their own.
 INGREDIENT_FORM_WORDS = {
     "powder", "extract", "oil", "cream", "gel", "juice", "paste", "lotion",
     "serum", "soap", "capsule", "tablet", "syrup", "tea", "water", "milk",
     "seed", "root", "leaf", "bark", "flour", "spice", "butter", "essential",
-    "pure", "organic", "natural", "dried", "fresh", "raw",
+    "pure", "organic", "natural", "dried", "fresh", "raw", "liquid",
+    "solution", "resin", "distillate", "concentrate", "granules", "tincture",
+    # Ayurvedic / Hindi forms
+    "tel", "churna", "choorna", "vati", "bhasma", "taila", "tailam", "ghrita",
+    "lepa", "lep", "kwath", "kadha", "arishta", "asava", "avaleha", "rasayana",
 }
+
+# Product types, not ingredients ("shampoo" submitted as an ingredient).
+PRODUCT_TYPE = "PRODUCT_TYPE"  # a product ("shampoo"), not an ingredient
+PRODUCT_TYPE_WORDS = {
+    "shampoo", "soap", "lipstick", "sunscreen", "sunblock", "face wash", "facewash",
+    "body wash", "hand wash", "cleanser", "moisturizer", "moisturiser", "toner",
+    "conditioner", "deodorant", "perfume", "kajal", "kohl", "toothpaste",
+    "mouthwash", "scrub", "face mask", "mask", "lip balm", "balm", "foundation",
+    "mascara", "eyeliner", "nail polish", "hair dye", "hair oil", "face cream",
+    "cream", "lotion", "serum", "gel", "sabun", "ubtan", "cosmetic", "cosmetics",
+}
+
+# Ingredient classes (one per submitted ingredient).
+VERIFIED_INGREDIENT = "VERIFIED_INGREDIENT"                  # in the ontology
+POSSIBLE_INGREDIENT = "POSSIBLE_INGREDIENT"                  # names a plant/food/substance, not in ontology
+UNKNOWN_TRADITIONAL_INGREDIENT = "UNKNOWN_TRADITIONAL_INGREDIENT"  # not ordinary English; likely a regional herb
+NON_INGREDIENT_COMMON_WORD = "NON_INGREDIENT_COMMON_WORD"    # ordinary word, not a substance
+FORM_WORD = "FORM_WORD"                                      # only a form ("powder") with no ingredient
+RANDOM_GARBAGE = "RANDOM_GARBAGE"                            # keyboard mash / digits / no real word
+
+INVALID_INGREDIENT_CLASSES = {NON_INGREDIENT_COMMON_WORD, FORM_WORD, RANDOM_GARBAGE, PRODUCT_TYPE}
+
+# cosmetic/product validity of each class (spec: VALID / PLAUSIBLE / UNKNOWN / INVALID).
+CLASS_VALIDITY = {
+    "VERIFIED_INGREDIENT": "VALID",
+    "POSSIBLE_INGREDIENT": "PLAUSIBLE",
+    "UNKNOWN_TRADITIONAL_INGREDIENT": "UNKNOWN",
+    "NON_INGREDIENT_COMMON_WORD": "INVALID",
+    "FORM_WORD": "INVALID",
+    "RANDOM_GARBAGE": "INVALID",
+    "PRODUCT_TYPE": "INVALID",
+}
+PLAUSIBLE_UNKNOWN_CLASSES = {POSSIBLE_INGREDIENT, UNKNOWN_TRADITIONAL_INGREDIENT}
+
+_KEYBOARD_ROWS = ("qwertyuiop", "asdfghjkl", "zxcvbnm", "1234567890")
 
 
 PRODUCT_TAXONOMY = {
@@ -139,6 +181,11 @@ class ProductContext:
     # for its ingredients and stated category?
     relevance_status: str = "UNDETERMINED"
     relevance_reasons: list[str] = field(default_factory=list)
+    # One entry per ingredient: identity, ingredient_class, ontology_match,
+    # common_sense_check, reason.
+    ingredient_assessments: list[dict[str, Any]] = field(default_factory=list)
+    # Submitted terms that are not ingredients and were ignored.
+    ignored_terms: list[str] = field(default_factory=list)
     retrieval_queries: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -183,7 +230,7 @@ class ProductContextEngine:
 
         self.vocabulary = _load_vocabulary(str(DEFAULT_VOCABULARY_PATH))
         self.ingredient_words = _load_ingredient_words(str(DEFAULT_INGREDIENT_WORDS_PATH))
-        self.indian_words = _load_ingredient_words(str(DEFAULT_INDIAN_WORDS_PATH))
+        self.indian_ingredients = _load_ingredient_words(str(DEFAULT_INDIAN_INGREDIENTS_PATH))
 
         self._alias_to_canonical: dict[str, str] = {}
         self._scientific_to_canonical: dict[str, str] = {}
@@ -206,24 +253,104 @@ class ProductContextEngine:
             t in self.vocabulary or t in self._alias_to_canonical for t in tokens
         )
 
-    def is_non_ingredient(self, name: str) -> bool:
-        """True when a name not in the ontology is an ordinary word, not an ingredient.
+    def _is_ingredient_word(self, token: str) -> bool:
+        if token in self.ingredient_words or token in self._alias_to_canonical:
+            return True
+        # Plural forms: "almonds", "oats" -> "almond", "oat".
+        return token.endswith("s") and token[:-1] in self.ingredient_words
 
-        "latent", "latent powder" -> True. "lavender", "shea butter" -> False
-        (ingredient words). "punarnava", "kutki" -> False (not ordinary English,
-        likely a regional herb name). Only ordinary dictionary words that name
-        no plant, food, substance or material count as non-ingredients.
+    @staticmethod
+    def _looks_random(token: str) -> bool:
+        if len(token) < 3 or not re.search(r"[aeiou]", token):
+            return True
+        if re.search(r"[bcdfghjklmnpqrstvwxz]{5,}", token) or re.search(r"(.)\1\1", token):
+            return True
+        return any(
+            len(token) >= 4 and token[k:k + 4] in row
+            for row in _KEYBOARD_ROWS for k in range(len(token) - 3)
+        )
+
+    def classify_ingredient(self, name: str) -> dict[str, Any]:
+        """Classify one submitted ingredient (common-sense gate).
+
+        Order: ontology (verified) -> plant/food/substance/material word
+        (possible) -> ordinary English word (not an ingredient) -> keyboard
+        mash (garbage) -> anything else is treated as an unknown regional /
+        traditional name and is NOT blocked. A word appearing in the legal
+        corpus never makes it an ingredient.
         """
-        tokens = re.findall(r"[a-z]{3,}", self._norm(name))
-        core = [t for t in tokens if t not in INGREDIENT_FORM_WORDS] or tokens
+        raw = str(name or "")
+        norm = self._norm(raw)
+        canonical = self.normalize_ingredient(raw)
+
+        def result(identity, cls, check, reason, canonical_name=None):
+            return {
+                "input": raw,
+                "ingredient_identity": identity,
+                "canonical": canonical_name,
+                "ingredient_class": cls,
+                "cosmetic_validity": CLASS_VALIDITY[cls],
+                "ontology_match": canonical_name is not None,
+                "common_sense_check": check,
+                "reason": reason,
+            }
+
+        if canonical in self.ontology:
+            return result(canonical, VERIFIED_INGREDIENT, "passed",
+                          f"'{canonical}' is in the ingredient ontology.", canonical)
+        inner = self._aliases_in(raw)
+        if inner:
+            return result(inner[0], VERIFIED_INGREDIENT, "passed",
+                          f"'{raw}' contains the known ingredient '{inner[0]}'.", inner[0])
+
+        if re.search(r"[\u0900-\u097f]", norm):
+            # No Hindi dictionary to judge by: stay conservative (UNKNOWN).
+            return result(norm, UNKNOWN_TRADITIONAL_INGREDIENT, "uncertain",
+                          f"'{raw}' (Hindi script) is not in the ingredient ontology; "
+                          "its identity could not be verified.")
+        if re.search(r"\d", norm):
+            return result(norm, RANDOM_GARBAGE, "failed",
+                          f"'{raw}' is not a recognisable ingredient name.")
+        if norm in PRODUCT_TYPE_WORDS:
+            return result(norm, PRODUCT_TYPE, "failed",
+                          f"'{raw}' is a product type, not an ingredient.")
+        tokens = re.findall(r"[a-z]+", norm)
+        core = [t for t in tokens if t not in INGREDIENT_FORM_WORDS]
+        identity = " ".join(core) or norm
+        if tokens and not core:
+            return result(norm, FORM_WORD, "failed",
+                          f"'{raw}' is only a product form, not an ingredient.")
         if not core:
-            return False
-        if any(
-            t in self.ingredient_words or t in self.indian_words or t in self._alias_to_canonical
-            for t in core
+            return result(norm, RANDOM_GARBAGE, "failed",
+                          f"'{raw}' is not a recognisable ingredient name.")
+        if identity in PRODUCT_TYPE_WORDS:
+            return result(identity, PRODUCT_TYPE, "failed",
+                          f"'{raw}' is a product type, not an ingredient.")
+        if any(t in self.indian_ingredients for t in core):
+            return result(identity, UNKNOWN_TRADITIONAL_INGREDIENT, "uncertain",
+                          f"'{identity}' is a traditional / regional ingredient name "
+                          "not in the ingredient ontology.")
+        if all(self._looks_random(t) for t in core if t not in self.ingredient_words):
+            if not any(t in self.ingredient_words for t in core):
+                return result(identity, RANDOM_GARBAGE, "failed",
+                              f"'{raw}' is not a recognisable ingredient name.")
+
+        if identity in self.ingredient_words or norm in self.ingredient_words or any(
+            self._is_ingredient_word(t) for t in core if len(t) >= 3
         ):
-            return False
-        return all(t in self.vocabulary for t in core)
+            return result(identity, POSSIBLE_INGREDIENT, "passed",
+                          f"'{identity}' names a plant, food, substance or material, "
+                          "but is not in the ingredient ontology.")
+        if all(t in self.vocabulary for t in core if len(t) >= 3) and any(len(t) >= 3 for t in core):
+            return result(identity, NON_INGREDIENT_COMMON_WORD, "failed",
+                          f"'{identity}' is an ordinary word, not a plant, herb, food or material.")
+        unknown = [t for t in core if t not in self.vocabulary]
+        if all(self._looks_random(t) for t in unknown):
+            return result(identity, RANDOM_GARBAGE, "failed",
+                          f"'{raw}' is not a recognisable ingredient name.")
+        return result(identity, UNKNOWN_TRADITIONAL_INGREDIENT, "uncertain",
+                      f"'{identity}' is not in the ontology and not an ordinary English word; "
+                      "it may be a regional or traditional ingredient name.")
 
     @staticmethod
     def _load_json(path: Path) -> Any:
@@ -236,7 +363,7 @@ class ProductContextEngine:
             return ""
         text = str(value).strip().lower()
         text = re.sub(r"[\u2018\u2019\u201c\u201d]", "'", text)
-        text = re.sub(r"[^a-z0-9\s\-/]", " ", text)
+        text = re.sub(r"[^a-z0-9\u0900-\u097f\s\-/]", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
     def normalize_ingredient(self, value: str) -> str:
@@ -256,7 +383,7 @@ class ProductContextEngine:
         for alias in sorted(names, key=len, reverse=True):
             if len(alias) < 3:
                 continue
-            if re.search(rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])", norm_text):
+            if re.search(rf"(?<![a-z0-9\u0900-\u097f]){re.escape(alias)}(?![a-z0-9\u0900-\u097f])", norm_text):
                 found.append(names[alias])
         return found
 
@@ -335,18 +462,18 @@ class ProductContextEngine:
         ontology does not know leave the result UNDETERMINED.
         """
         known = [x for x in ingredients if x in self.ontology]
-        non_ingredients = [
-            x for x in ingredients if x not in self.ontology and self.is_non_ingredient(x)
-        ]
+        assessments = [self.classify_ingredient(x) for x in ingredients if x not in self.ontology]
+        invalid = [a for a in assessments if a["ingredient_class"] in INVALID_INGREDIENT_CLASSES]
+        plausible = [a for a in assessments if a["ingredient_class"] in PLAUSIBLE_UNKNOWN_CLASSES]
         non_ingredient_reasons = [
-            f"'{x}' is not a recognised ingredient: it is an ordinary word, "
-            "not a plant, herb, food or material." for x in non_ingredients
+            f"Ignored term: {a['reason']}" for a in invalid
         ]
         if not known:
-            unknown = [x for x in ingredients if x not in non_ingredients]
-            if non_ingredients and not unknown:
-                return "IRRELEVANT", non_ingredient_reasons
-            return "UNDETERMINED", ["No ingredient found in the ingredient ontology."]
+            if plausible:
+                return "UNDETERMINED", [a["reason"] for a in plausible] + non_ingredient_reasons
+            if invalid:
+                return "IRRELEVANT", [a["reason"] for a in invalid]
+            return "UNDETERMINED", ["No ingredient was given."]
 
         out_of_scope = [x for x in known if self.ontology[x].get("in_scope") is False]
         known = [x for x in known if x not in out_of_scope]
@@ -371,7 +498,7 @@ class ProductContextEngine:
                 f"Note: '{x}' is not a known {category} ingredient (known uses: "
                 f"{', '.join(self.ontology[x].get('common_product_contexts', []))})."
                 for x in mismatched
-            ] + [f"Note: {r}" for r in non_ingredient_reasons]
+            ] + non_ingredient_reasons
         return "IRRELEVANT", [
             f"'{x}' is not a known {category} ingredient (known uses: "
             f"{', '.join(self.ontology[x].get('common_product_contexts', []))})."
@@ -400,7 +527,32 @@ class ProductContextEngine:
             if x
         )
         normalized_product = self._norm(product_name or combined)
-        ingredient_list = self._find_ingredients(combined, ingredients)
+
+        # ─────────────────────────────────────────────────────────────────
+        # ENTITY RESOLUTION GATE (Rules 1, 13, 18, 20, 25)
+        # Classify EVERY submitted ingredient BEFORE resolving ontology IDs.
+        # Invalid classes (ordinary words, form words, garbage, product
+        # types) are rejected here and can NEVER enter the evidence or
+        # scoring pipeline.
+        # ─────────────────────────────────────────────────────────────────
+        raw_ingredients = list(ingredients or [])
+        ingredient_assessments_all: list[dict] = [
+            self.classify_ingredient(x) for x in raw_ingredients
+        ]
+        valid_raw_ingredients = [
+            raw_ingredients[i]
+            for i, a in enumerate(ingredient_assessments_all)
+            if a["ingredient_class"] not in INVALID_INGREDIENT_CLASSES
+        ]
+        ignored_terms = [
+            raw_ingredients[i]
+            for i, a in enumerate(ingredient_assessments_all)
+            if a["ingredient_class"] in INVALID_INGREDIENT_CLASSES
+        ]
+        # Hard gate: if every submitted ingredient is invalid, reject all.
+        all_invalid = bool(raw_ingredients) and not valid_raw_ingredients
+
+        ingredient_list = self._find_ingredients(combined, valid_raw_ingredients)
         scientific_names: list[str] = []
         possible_contexts: list[str] = []
         for canonical in ingredient_list:
@@ -426,6 +578,19 @@ class ProductContextEngine:
         relevance_status, relevance_reasons = self._assess_relevance(
             ingredient_list, category, category_map.get(category)
         )
+        # If all submitted ingredients were invalid ordinary/form/garbage
+        # words, override relevance to IRRELEVANT regardless of category.
+        if all_invalid:
+            relevance_status = "IRRELEVANT"
+            invalid_reasons = [
+                ingredient_assessments_all[i]["reason"]
+                for i, a in enumerate(ingredient_assessments_all)
+                if a["ingredient_class"] in INVALID_INGREDIENT_CLASSES
+            ]
+            relevance_reasons = invalid_reasons or [
+                "All submitted ingredients were rejected as non-ingredient terms."
+            ]
+        ingredient_assessments = ingredient_assessments_all
 
         if category in category_map:
             narrowed = [x for x in possible_contexts if x in category_map[category]]
@@ -513,7 +678,8 @@ class ProductContextEngine:
                 "recognisable word or ingredient; please enter real "
                 "ingredient names and a clear intended use."
             ]
-        if relevance_status == "IRRELEVANT":
+        # Hard score gate (Rules 20, 25): IRRELEVANT or all_invalid → 0%
+        if relevance_status == "IRRELEVANT" or all_invalid:
             score = 0.0
 
         requires_clarification = is_bare_ambiguous or unrecognized_input or (
@@ -537,6 +703,8 @@ class ProductContextEngine:
             context_confidence=score,
             relevance_status=relevance_status,
             relevance_reasons=relevance_reasons,
+            ingredient_assessments=ingredient_assessments,
+            ignored_terms=ignored_terms,
         )
         context.retrieval_queries = build_contextual_queries(context)
         return context

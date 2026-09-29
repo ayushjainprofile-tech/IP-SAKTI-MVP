@@ -11,7 +11,10 @@
     "regional_names": [
       "mirch",
       "lal mirch",
-      "hari mirch"
+      "hari mirch",
+      "मिर्च",
+      "लाल मिर्च",
+      "हरी मिर्च"
     ],
     "scientific_names": [
       "Capsicum annuum",
@@ -32,7 +35,8 @@
     "regional_names": [
       "kali mirch",
       "marich",
-      "maricha"
+      "maricha",
+      "काली मिर्च"
     ],
     "scientific_names": [
       "Piper nigrum"
@@ -52,7 +56,9 @@
     ],
     "regional_names": [
       "haldi",
-      "haridra"
+      "haridra",
+      "हल्दी",
+      "हरिद्रा"
     ],
     "scientific_names": [
       "Curcuma longa"
@@ -75,7 +81,9 @@
     ],
     "regional_names": [
       "nimba",
-      "nimb"
+      "nimb",
+      "नीम",
+      "निम्ब"
     ],
     "scientific_names": [
       "Azadirachta indica"
@@ -94,7 +102,8 @@
       "basil"
     ],
     "regional_names": [
-      "tulasi"
+      "tulasi",
+      "तुलसी"
     ],
     "scientific_names": [
       "Ocimum tenuiflorum",
@@ -114,7 +123,9 @@
       "winter cherry"
     ],
     "regional_names": [
-      "asgandh"
+      "asgandh",
+      "अश्वगंधा",
+      "असगंध"
     ],
     "scientific_names": [
       "Withania somnifera"
@@ -133,7 +144,9 @@
     "regional_names": [
       "adrak",
       "saunth",
-      "shunthi"
+      "shunthi",
+      "अदरक",
+      "सोंठ"
     ],
     "scientific_names": [
       "Zingiber officinale"
@@ -152,7 +165,10 @@
     ],
     "regional_names": [
       "ghritkumari",
-      "kumari"
+      "kumari",
+      "एलोवेरा",
+      "घृतकुमारी",
+      "ग्वारपाठा"
     ],
     "scientific_names": [
       "Aloe barbadensis",
@@ -172,7 +188,10 @@
     ],
     "regional_names": [
       "amalaki",
-      "awla"
+      "awla",
+      "आंवला",
+      "आँवला",
+      "आमलकी"
     ],
     "scientific_names": [
       "Phyllanthus emblica",
@@ -192,7 +211,8 @@
       "water hyssop"
     ],
     "regional_names": [
-      "jalabrahmi"
+      "jalabrahmi",
+      "ब्राह्मी"
     ],
     "scientific_names": [
       "Bacopa monnieri"
@@ -210,7 +230,9 @@
       "heart-leaved moonseed"
     ],
     "regional_names": [
-      "amrita"
+      "amrita",
+      "गिलोय",
+      "गुडूची"
     ],
     "scientific_names": [
       "Tinospora cordifolia"
@@ -228,7 +250,9 @@
     ],
     "regional_names": [
       "chandan",
-      "chandana"
+      "chandana",
+      "चंदन",
+      "चन्दन"
     ],
     "scientific_names": [
       "Santalum album"
@@ -243,7 +267,9 @@
     "common_names": [],
     "regional_names": [
       "kesar",
-      "kumkuma"
+      "kumkuma",
+      "केसर",
+      "कुमकुम"
     ],
     "scientific_names": [
       "Crocus sativus"
@@ -260,7 +286,8 @@
       "coconut oil"
     ],
     "regional_names": [
-      "nariyal"
+      "nariyal",
+      "नारियल"
     ],
     "scientific_names": [
       "Cocos nucifera"
@@ -280,7 +307,8 @@
     ],
     "regional_names": [
       "til",
-      "tila"
+      "tila",
+      "तिल"
     ],
     "scientific_names": [
       "Sesamum indicum"
@@ -299,7 +327,9 @@
     ],
     "regional_names": [
       "sarson",
-      "rai"
+      "rai",
+      "सरसों",
+      "राई"
     ],
     "scientific_names": [
       "Brassica juncea"
@@ -314,7 +344,8 @@
     "common_names": [],
     "regional_names": [
       "dalchini",
-      "twak"
+      "twak",
+      "दालचीनी"
     ],
     "scientific_names": [
       "Cinnamomum verum",
@@ -331,7 +362,8 @@
     "common_names": [],
     "regional_names": [
       "elaichi",
-      "ela"
+      "ela",
+      "इलायची"
     ],
     "scientific_names": [
       "Elettaria cardamomum"
@@ -349,7 +381,8 @@
     ],
     "regional_names": [
       "laung",
-      "lavanga"
+      "lavanga",
+      "लौंग"
     ],
     "scientific_names": [
       "Syzygium aromaticum"
@@ -365,7 +398,8 @@
     "common_names": [],
     "regional_names": [
       "lehsun",
-      "lasuna"
+      "lasuna",
+      "लहसुन"
     ],
     "scientific_names": [
       "Allium sativum"
@@ -382,7 +416,8 @@
       "methi seeds"
     ],
     "regional_names": [
-      "methi"
+      "methi",
+      "मेथी"
     ],
     "scientific_names": [
       "Trigonella foenum-graecum"
@@ -400,7 +435,9 @@
     ],
     "regional_names": [
       "sahjan",
-      "shigru"
+      "shigru",
+      "सहजन",
+      "मोरिंगा"
     ],
     "scientific_names": [
       "Moringa oleifera"
@@ -417,7 +454,9 @@
     "common_names": [
       "asparagus root"
     ],
-    "regional_names": [],
+    "regional_names": [
+      "शतावरी"
+    ],
     "scientific_names": [
       "Asparagus racemosus"
     ],
@@ -429,7 +468,9 @@
   },
   "triphala": {
     "common_names": [],
-    "regional_names": [],
+    "regional_names": [
+      "त्रिफला"
+    ],
     "scientific_names": [],
     "common_product_contexts": [
       "ayush",
@@ -442,7 +483,9 @@
       "fuller's earth",
       "fullers earth"
     ],
-    "regional_names": [],
+    "regional_names": [
+      "मुल्तानी मिट्टी"
+    ],
     "scientific_names": [],
     "common_product_contexts": [
       "cosmetic",
@@ -455,7 +498,8 @@
       "rose petals"
     ],
     "regional_names": [
-      "gulab"
+      "gulab",
+      "गुलाब"
     ],
     "scientific_names": [
       "Rosa damascena"
@@ -471,7 +515,9 @@
     "common_names": [],
     "regional_names": [
       "shahad",
-      "madhu"
+      "madhu",
+      "शहद",
+      "मधु"
     ],
     "scientific_names": [],
     "common_product_contexts": [
@@ -486,7 +532,8 @@
       "clarified butter"
     ],
     "regional_names": [
-      "ghrita"
+      "ghrita",
+      "घी"
     ],
     "scientific_names": [],
     "common_product_contexts": [
@@ -501,7 +548,9 @@
     ],
     "regional_names": [
       "mulethi",
-      "yashtimadhu"
+      "yashtimadhu",
+      "मुलेठी",
+      "यष्टिमधु"
     ],
     "scientific_names": [
       "Glycyrrhiza glabra"
@@ -518,7 +567,8 @@
       "false daisy"
     ],
     "regional_names": [
-      "bhringaraj"
+      "bhringaraj",
+      "भृंगराज"
     ],
     "scientific_names": [
       "Eclipta prostrata",
@@ -537,7 +587,8 @@
     ],
     "regional_names": [
       "chai",
-      "chai patti"
+      "chai patti",
+      "चाय"
     ],
     "scientific_names": [
       "Camellia sinensis"
