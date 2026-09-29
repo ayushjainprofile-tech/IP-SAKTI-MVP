@@ -107,6 +107,15 @@ function Dashboard() {
     };
 
     let data = null;
+    // The hosted backend (Render free tier) can be asleep, redeploying or
+    // busy and then answers 502/503 or times out. Retry a few times with a
+    // short wait instead of failing on the first try.
+    const RETRY_WAITS_MS = [0, 8000, 15000, 25000];
+    for (let attempt = 0; attempt < RETRY_WAITS_MS.length && !data; attempt++) {
+    if (attempt > 0) {
+      setError(`Server is waking up or busy, retrying (${attempt}/${RETRY_WAITS_MS.length - 1})…`);
+      await new Promise((r) => setTimeout(r, RETRY_WAITS_MS[attempt]));
+    }
     for (const host of API_ENDPOINTS) {
       try {
         const controller = new AbortController();
@@ -137,15 +146,17 @@ function Dashboard() {
         // Fallback to next endpoint or instant smart analysis
       }
     }
+    }
 
     if (!data) {
       // Never show placeholder scores: confidence must come from the
       // backend's Product Context Engine.
-      setError("Could not reach the analysis backend. Please try again in a minute (the server may be waking up).");
+      setError("Could not reach the analysis backend after several tries. Please try again in a minute.");
       setLoading(false);
       return;
     }
 
+    setError("");
     setResult(data);
     setLoading(false);
   }
