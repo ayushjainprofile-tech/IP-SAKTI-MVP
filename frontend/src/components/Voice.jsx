@@ -61,7 +61,8 @@ const currentOwner = () => (session ? session.owner : null);
 
 function stopSession() {
   if (!session) return;
-  const { recognition } = session;
+  const { recognition, finish } = session;
+  finish?.();
   session = null;
   try { recognition.abort(); } catch { /* already stopped */ }
   notify();
@@ -93,49 +94,128 @@ export function useVoiceInput({ language = "en", onTranscript }) {
     if (permissionDenied) { setError(txt.denied); return; }
     stopSession(); // only one session at a time
 
-    const recognition = new SpeechRecognitionImpl();
-    recognition.lang = LOCALES[language] || "en-IN";
-    recognition.interimResults = true;
-    recognition.continuous = false; // stops by itself when speech ends
-    recognition.maxAlternatives = 1;
+    // Android Chrome repeats results in continuous mode, so there we run
+    // short single-utterance sessions and restart them until the user pauses.
+    const isAndroid = /android/i.test(navigator.userAgent || "");
+    const SILENCE_MS = 2500;   // stop after this much quiet once speech began
+    const START_WAIT_MS = 8000; // give up if nothing is said at all
+    const MAX_MS = 60000;      // hard cap for one voice entry
+    const MAX_RESTARTS = 12;   // engine restarts after short pauses
+    let restarts = 0;
+    let finished = false;
 
-    let finalText = "";
     const me = idRef.current;
-    recognition.onresult = (event) => {
-      let partial = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const piece = event.results[i][0].transcript;
-        if (event.results[i].isFinal) finalText += piece;
-        else partial += piece;
+    const committed = [];      // final text from finished segments
+    let segmentFinal = [];     // final pieces of the running segment, by result index
+    let heardSpeech = false;
+    let userStopped = false;
+    let silenceTimer = null;
+    const startedAt = Date.now();
+
+    const bestAlternative = (result) => {
+      let best = result[0];
+      for (let k = 1; k < result.length; k++) {
+        if ((result[k].confidence || 0) > (best.confidence || 0)) best = result[k];
       }
-      setInterim(partial);
-      if (finalText) setProcessing(true);
+      return best.transcript;
     };
-    recognition.onerror = (event) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        permissionDenied = true; // don't ask again this page load
-        setError(txt.denied);
-      } else if (event.error === "no-speech") {
-        setError(txt.noSpeech);
-      } else if (event.error !== "aborted") {
-        setError(txt.failed);
-      }
+    const fullText = () =>
+      [...committed, segmentFinal.filter(Boolean).join(" ")]
+        .join(" ").replace(/\s+/g, " ").trim();
+
+    const armSilence = (ms) => {
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => {
+        userStopped = true;
+        try { recognition.stop(); } catch { /* ended */ }
+      }, ms);
     };
-    recognition.onend = () => {
+
+    const makeRecognition = () => {
+      const r = new SpeechRecognitionImpl();
+      r.lang = LOCALES[language] || "en-IN";
+      r.interimResults = true;
+      r.continuous = !isAndroid;
+      r.maxAlternatives = 3;
+      r.onresult = (event) => {
+        if (r !== recognition || finished) return;
+        // Rebuild from the full result list each time; never append blindly,
+        // so repeated / revised results cannot duplicate words.
+        let partial = "";
+        segmentFinal = [];
+        for (let k = 0; k < event.results.length; k++) {
+          const text = bestAlternative(event.results[k]);
+          if (event.results[k].isFinal) segmentFinal[k] = text.trim();
+          else partial += text;
+        }
+        if (fullText() || partial.trim()) heardSpeech = true;
+        setInterim(`${fullText()} ${partial}`.trim());
+        armSilence(SILENCE_MS);
+      };
+      r.onerror = (event) => {
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          permissionDenied = true; // don't ask again this page load
+          userStopped = true;
+          setError(txt.denied);
+        } else if (event.error === "no-speech") {
+          if (!heardSpeech) { userStopped = true; setError(txt.noSpeech); }
+        } else if (event.error === "network" || event.error === "audio-capture") {
+          userStopped = true;
+          setError(txt.failed);
+        } else if (event.error !== "aborted") {
+          userStopped = true;
+          setError(txt.failed);
+        }
+      };
+      r.onend = () => {
+        if (r !== recognition || finished) return; // stale engine / already done
+        const segment = segmentFinal.filter(Boolean).join(" ").trim();
+        if (segment) committed.push(segment);
+        segmentFinal = [];
+        const stillMine = session && session.owner === me;
+        const keepGoing =
+          stillMine && !userStopped && restarts < MAX_RESTARTS &&
+          Date.now() - startedAt < MAX_MS;
+        if (keepGoing) {
+          // The engine ended on a short pause: keep listening (with a small
+          // gap so a phone doesn't beep in a tight loop).
+          restarts += 1;
+          setTimeout(() => {
+            if (!session || session.owner !== me || userStopped) { finish(); return; }
+            try {
+              recognition = makeRecognition();
+              session.recognition = recognition;
+              recognition.start();
+            } catch { finish(); }
+          }, 250);
+          return;
+        }
+        finish();
+      };
+      return r;
+    };
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(silenceTimer);
       setInterim("");
       setProcessing(false);
-      const text = finalText.trim();
-      if (text) callbackRef.current?.(text);
+      const text = committed.join(" ").replace(/\s+/g, " ").trim();
+      if (text) callbackRef.current?.(text); // always into this field
       if (session && session.owner === me) { session = null; notify(); }
     };
 
+    let recognition = makeRecognition();
     setError("");
     setInterim("");
-    session = { owner: me, recognition };
+    session = { owner: me, recognition, finish: () => { userStopped = true; setProcessing(true); } };
     notify();
+    armSilence(START_WAIT_MS);
     try {
       recognition.start();
     } catch {
+      clearTimeout(silenceTimer);
       session = null;
       notify();
       setError(txt.failed);
@@ -144,6 +224,7 @@ export function useVoiceInput({ language = "en", onTranscript }) {
 
   function stop() {
     if (!listening || !session) return;
+    session.finish?.();
     try { session.recognition.stop(); } catch { stopSession(); } // stop() keeps the final result
   }
 
