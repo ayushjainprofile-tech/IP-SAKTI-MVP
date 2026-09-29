@@ -1,14 +1,17 @@
 services:
   - type: web
     name: ip-sakti-backend
-    env: python
+    runtime: python
     region: oregon # you can change this
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements-render.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
       - key: OLLAMA_MODEL
         value: "qwen2.5:1.5b"
       - key: AGENTIC_AI_ENABLED
-        value: "false" # Set to false if Ollama can't run on the Free tier
+        value: "false" # Ollama can't run on the Free tier

@@ -9,12 +9,21 @@ import heroBgVideo from "./white-sheet-bg.mp4";
 
 const API_ENDPOINTS = [
   import.meta.env.VITE_API_URL,
-  "https://discolor-fretful-coronary.ngrok-free.dev",
   "http://localhost:8001",
   "http://127.0.0.1:8001",
   "http://localhost:8000",
   "http://127.0.0.1:8000",
 ].filter(Boolean);
+
+/* Render free tier sleeps when idle; cold start can take ~50s */
+function requestTimeout(host, localMs) {
+  return /localhost|127\.0\.0\.1/.test(host) ? localMs : 90000;
+}
+
+/* Wake the hosted backend as soon as the app loads */
+if (import.meta.env.VITE_API_URL) {
+  fetch(`${import.meta.env.VITE_API_URL}/api/health`).catch(() => {});
+}
 
 /* Safely convert any value to a renderable string */
 function toStr(val) {
@@ -251,7 +260,7 @@ function Dashboard() {
     for (const host of API_ENDPOINTS) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), requestTimeout(host, 2000));
         const response = await fetch(`${host}/api/analyze`, {
           method: "POST",
           headers: { 
@@ -295,7 +304,7 @@ function Dashboard() {
     for (const host of API_ENDPOINTS) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), requestTimeout(host, 3000));
         const response = await fetch(`${host}/api/agent/chat`, {
           method: "POST",
           headers: { 
