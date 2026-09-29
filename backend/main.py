@@ -3220,35 +3220,32 @@ Never convert retrieval signals into legal conclusions.
 """
 
     try:
-
-        response = ollama.chat(
-
-            model=OLLAMA_MODEL,
-
-            messages=[
-                {
-                    "role":
-                        "user",
-
-                    "content":
-                        prompt
-                }
-            ],
-
-            format="json"
+        
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if not groq_api_key:
+            return normalize_llm_analysis({
+                "summary": "Groq API Key not found. Please add GROQ_API_KEY in Render environment variables."
+            })
+            
+        req = Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {groq_api_key}",
+                "Content-Type": "application/json"
+            }
         )
-
-        content = (
-            response
-            .get(
-                "message",
-                {}
-            )
-            .get(
-                "content",
-                ""
-            )
-        )
+        
+        data = {
+            "model": "llama3-8b-8192",
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"}
+        }
+        
+        with urlopen(req, data=json.dumps(data).encode("utf-8"), timeout=30) as response:
+            res_body = response.read().decode("utf-8")
+            res_json = json.loads(res_body)
+            content = res_json["choices"][0]["message"]["content"]
 
         parsed = parse_json_object(
             content
@@ -3363,7 +3360,7 @@ def calculate_confidence(
                 "LOW",
 
             "score":
-                0.20,
+                0.0,
 
             "basis": [
                 "No relevant evidence was retrieved."
@@ -3423,7 +3420,7 @@ def calculate_confidence(
     if not supported_domains:
 
         level = "LOW"
-        score = 0.20
+        score = 0.0
 
     # Mixed result:
     # some domains supported, some unsupported.
@@ -3446,7 +3443,7 @@ def calculate_confidence(
     elif status == "UNSUPPORTED":
 
         level = "LOW"
-        score = 0.25
+        score = 0.0
 
     elif (
         strongest_score >= 12
