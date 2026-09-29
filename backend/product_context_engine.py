@@ -29,6 +29,19 @@ DEFAULT_VOCABULARY_PATH = BASE_DIR / "data" / "vocabulary.txt"
 
 # Ayurvedic / Hinglish product words a dictionary will not know.
 DEFAULT_INDIAN_WORDS_PATH = BASE_DIR / "data" / "indian_product_words.txt"
+# Words that name a plant, food, substance or material (WordNet nouns under
+# plant / food / substance / material / chemical ...), used to tell an
+# ingredient missing from the ontology ("lavender") from an ordinary word
+# that is not an ingredient at all ("latent").
+DEFAULT_INGREDIENT_WORDS_PATH = BASE_DIR / "data" / "ingredient_words.txt"
+
+# Form/quality words that do not identify an ingredient on their own.
+INGREDIENT_FORM_WORDS = {
+    "powder", "extract", "oil", "cream", "gel", "juice", "paste", "lotion",
+    "serum", "soap", "capsule", "tablet", "syrup", "tea", "water", "milk",
+    "seed", "root", "leaf", "bark", "flour", "spice", "butter", "essential",
+    "pure", "organic", "natural", "dried", "fresh", "raw",
+}
 
 
 PRODUCT_TAXONOMY = {
@@ -146,6 +159,15 @@ def _load_vocabulary(path: str) -> frozenset[str]:
     return frozenset(words)
 
 
+@lru_cache(maxsize=1)
+def _load_ingredient_words(path: str) -> frozenset[str]:
+    words_path = Path(path)
+    if not words_path.exists():
+        return frozenset()
+    with words_path.open("r", encoding="utf-8") as f:
+        return frozenset(line.strip().lower() for line in f if line.strip())
+
+
 class ProductContextEngine:
     """Data-driven product-context analyzer."""
 
@@ -160,6 +182,8 @@ class ProductContextEngine:
         self.examples = self._load_json(self.examples_path) if self.examples_path.exists() else []
 
         self.vocabulary = _load_vocabulary(str(DEFAULT_VOCABULARY_PATH))
+        self.ingredient_words = _load_ingredient_words(str(DEFAULT_INGREDIENT_WORDS_PATH))
+        self.indian_words = _load_ingredient_words(str(DEFAULT_INDIAN_WORDS_PATH))
 
         self._alias_to_canonical: dict[str, str] = {}
         self._scientific_to_canonical: dict[str, str] = {}
@@ -181,6 +205,25 @@ class ProductContextEngine:
         return any(
             t in self.vocabulary or t in self._alias_to_canonical for t in tokens
         )
+
+    def is_non_ingredient(self, name: str) -> bool:
+        """True when a name not in the ontology is an ordinary word, not an ingredient.
+
+        "latent", "latent powder" -> True. "lavender", "shea butter" -> False
+        (ingredient words). "punarnava", "kutki" -> False (not ordinary English,
+        likely a regional herb name). Only ordinary dictionary words that name
+        no plant, food, substance or material count as non-ingredients.
+        """
+        tokens = re.findall(r"[a-z]{3,}", self._norm(name))
+        core = [t for t in tokens if t not in INGREDIENT_FORM_WORDS] or tokens
+        if not core:
+            return False
+        if any(
+            t in self.ingredient_words or t in self.indian_words or t in self._alias_to_canonical
+            for t in core
+        ):
+            return False
+        return all(t in self.vocabulary for t in core)
 
     @staticmethod
     def _load_json(path: Path) -> Any:
@@ -292,7 +335,17 @@ class ProductContextEngine:
         ontology does not know leave the result UNDETERMINED.
         """
         known = [x for x in ingredients if x in self.ontology]
+        non_ingredients = [
+            x for x in ingredients if x not in self.ontology and self.is_non_ingredient(x)
+        ]
+        non_ingredient_reasons = [
+            f"'{x}' is not a recognised ingredient: it is an ordinary word, "
+            "not a plant, herb, food or material." for x in non_ingredients
+        ]
         if not known:
+            unknown = [x for x in ingredients if x not in non_ingredients]
+            if non_ingredients and not unknown:
+                return "IRRELEVANT", non_ingredient_reasons
             return "UNDETERMINED", ["No ingredient found in the ingredient ontology."]
 
         out_of_scope = [x for x in known if self.ontology[x].get("in_scope") is False]
@@ -318,7 +371,7 @@ class ProductContextEngine:
                 f"Note: '{x}' is not a known {category} ingredient (known uses: "
                 f"{', '.join(self.ontology[x].get('common_product_contexts', []))})."
                 for x in mismatched
-            ]
+            ] + [f"Note: {r}" for r in non_ingredient_reasons]
         return "IRRELEVANT", [
             f"'{x}' is not a known {category} ingredient (known uses: "
             f"{', '.join(self.ontology[x].get('common_product_contexts', []))})."
