@@ -3170,6 +3170,9 @@ def sanitize_unsupported_legal_references(
 
 GROQ_API_BASE = "https://api.groq.com/openai/v1"
 GROQ_PREFERRED_MODELS = ("openai/gpt-oss-20b", "llama-3.3-70b-versatile")
+# Tried in this order when the configured model is rate-limited (each model
+# has its own daily token limit) or no longer served.
+GROQ_FALLBACK_MODELS = ("openai/gpt-oss-20b", "openai/gpt-oss-120b", "llama-3.3-70b-versatile")
 
 
 class GroqError(RuntimeError):
@@ -3216,23 +3219,36 @@ def _groq_fallback_model(api_key):
 
 def groq_chat_completion(api_key, messages, json_mode=False, temperature=0.2, timeout=30):
     model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
-    payload = {"model": model, "messages": messages, "temperature": temperature}
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
-    try:
-        res = _groq_request(api_key, "/chat/completions", payload, timeout)
-    except GroqError as e:
-        # 404 model_not_found / 400 model_decommissioned: retry once with
-        # a model Groq currently serves.
-        if not (e.code == 404 or (e.code == 400 and "model" in e.detail)):
-            raise
+    candidates = [model] + [m for m in GROQ_FALLBACK_MODELS if m != model]
+    last_error = None
+    for index, candidate in enumerate(candidates):
+        payload = {"model": candidate, "messages": messages, "temperature": temperature}
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        try:
+            res = _groq_request(api_key, "/chat/completions", payload, timeout)
+            if index:
+                logger.warning("Groq answered with fallback model %s", candidate)
+            return res["choices"][0]["message"]["content"]
+        except GroqError as e:
+            last_error = e
+            # 429 rate limit (daily tokens), 404 model_not_found and
+            # 400 model_decommissioned: try the next model. Anything else
+            # (bad key, bad request) would fail the same way, so stop.
+            retryable = e.code in (429, 404) or (e.code == 400 and "model" in e.detail)
+            if not retryable:
+                raise
+            logger.warning("Groq model %s unavailable (%s); trying next", candidate, e)
+    # Last resort: whatever active chat model Groq lists right now.
+    if last_error is not None and last_error.code in (404, 400):
         fallback = _groq_fallback_model(api_key)
-        if not fallback or fallback == model:
-            raise
-        logger.warning("Groq model %s unavailable (%s); using %s", model, e, fallback)
-        payload["model"] = fallback
-        res = _groq_request(api_key, "/chat/completions", payload, timeout)
-    return res["choices"][0]["message"]["content"]
+        if fallback and fallback not in candidates:
+            payload = {"model": fallback, "messages": messages, "temperature": temperature}
+            if json_mode:
+                payload["response_format"] = {"type": "json_object"}
+            res = _groq_request(api_key, "/chat/completions", payload, timeout)
+            return res["choices"][0]["message"]["content"]
+    raise last_error
 
 
 def generate_llm_reasoning(
