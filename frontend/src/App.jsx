@@ -34,36 +34,22 @@ function toStr(val) {
   try { return JSON.stringify(val); } catch { return String(val); }
 }
 
+/* Domain bar status comes only from backend routing + validation. */
 function getDomainMetrics(result, domainCode) {
   const domains = result.domains || [];
-  const isIncluded = domains.includes(domainCode);
+  const supported = result.validation?.supported_domains || [];
   const confScore = result.confidence?.score ?? 0;
 
-  if (domainCode === "TK") {
-    if (isIncluded) {
-      const pct = Math.round(confScore * 96);
-      return { width: `${pct}%`, label: pct > 80 ? "Flagged" : "Relevant", color: "#d97706" };
-    }
-    return { width: "18%", label: "Low Risk", color: "#6b7280" };
+  if (result.validation?.status === "OUT_OF_SCOPE") {
+    return { width: "0%", label: "Out of scope", color: "#9f1239" };
   }
-
-  if (domainCode === "ABS") {
-    if (isIncluded) {
-      const pct = Math.round(confScore * 76);
-      return { width: `${pct}%`, label: pct > 60 ? "Review Required" : "Permissible", color: "#8A6421" };
-    }
-    return { width: "12%", label: "Exempt", color: "#6b7280" };
+  if (!domains.includes(domainCode)) {
+    return { width: "0%", label: "Not routed", color: "#6b7280" };
   }
-
-  if (domainCode === "IP") {
-    if (isIncluded) {
-      const pct = Math.round(confScore * 84);
-      return { width: `${pct}%`, label: pct > 70 ? "Prior Art Risk" : "Partial", color: "#3F6844" };
-    }
-    return { width: "25%", label: "Clear", color: "#3F6844" };
+  if (supported.includes(domainCode)) {
+    return { width: `${Math.round(confScore * 100)}%`, label: "Evidence found", color: "#3F6844" };
   }
-
-  return { width: "50%", label: "Standard", color: "#6b7280" };
+  return { width: "0%", label: "No evidence", color: "#8A6421" };
 }
 
 function generateLocalChatResponse(query, language = "en") {
@@ -559,6 +545,9 @@ function Dashboard() {
                     {Math.round((result.confidence?.score || 0) * 100)}%
                   </div>
                   <strong>{toStr(result.confidence?.level || result.confidence?.label || "")}</strong>
+                  {(result.product_context_engine?.context?.relevance_reasons || []).length > 0 && (
+                    <p><strong>Product Context Engine:</strong> {result.product_context_engine.context.relevance_reasons.map(toStr).join(" ")}</p>
+                  )}
                   <p className="muted">{toStr(result.confidence?.warning || result.confidence?.meaning || "")}</p>
                 </div>
               </div>

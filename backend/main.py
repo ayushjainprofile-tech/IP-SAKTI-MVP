@@ -26,10 +26,12 @@ try:
     from product_context_engine import (
         analyze_product_context,
         build_contextual_queries,
+        ProductContextEngine,
     )
     PRODUCT_CONTEXT_ENGINE_AVAILABLE = True
 except Exception as e:
     analyze_product_context = None
+    ProductContextEngine = None
     build_contextual_queries = None
     PRODUCT_CONTEXT_ENGINE_AVAILABLE = False
     logging.warning(
@@ -1103,6 +1105,28 @@ def detect_domains(
                 domains.append(
                     domain
                 )
+
+    # Ontology-driven routing (Product Context Engine): a known in-scope
+    # ingredient is a biological resource (ABS); one with a traditional
+    # knowledge / AYUSH use also routes to TK unless the user said "No".
+    if ProductContextEngine is not None:
+        try:
+            engine = ProductContextEngine()
+            for name in product.ingredients:
+                record = engine.ontology.get(engine.normalize_ingredient(name))
+                if not record or record.get("in_scope") is False:
+                    continue
+                contexts = set(record.get("common_product_contexts", []))
+                if (
+                    contexts & {"traditional knowledge", "ayush"}
+                    and tk_answer not in {"no", "false", "n", "0"}
+                    and "TK" not in domains
+                ):
+                    domains.insert(0, "TK")
+                if "ABS" not in domains:
+                    domains.append("ABS")
+        except Exception as e:
+            logger.warning("Ontology domain routing failed: %r", e)
 
     # Known biological-resource ingredients
     # are routing signals ONLY.
@@ -7820,8 +7844,10 @@ def analyze_product(
     # Product Context Engine has the final say on relevance:
     # an ingredient that does not belong to the product category
     # (e.g. chilli in a cosmetic) cannot earn evidence confidence.
+    out_of_scope_reasons = None
     if _context_value(product_context, "relevance_status") == "IRRELEVANT":
         reasons = list(_context_value(product_context, "relevance_reasons", []) or [])
+        out_of_scope_reasons = reasons
         confidence.update({
             "level": "OUT_OF_SCOPE",
             "score": 0.0,
@@ -7832,6 +7858,20 @@ def analyze_product(
                 "Confidence is 0% because the Product Context Engine found the product context irrelevant."
             ] + list(confidence.get("basis", []) or []),
         })
+        # Chunks retrieved for an irrelevant product are not evidence for
+        # it; drop them so validation, sources and action plan agree.
+        evidence = []
+        validation = {
+            **validation,
+            "status": "OUT_OF_SCOPE",
+            "message": (
+                "Product Context Engine: " + " ".join(reasons)
+                + " No evidence is shown for an irrelevant product context."
+            ),
+            "supported_domains": [],
+            "unsupported_domains": list(domains),
+            "evidence_count": 0,
+        }
 
     # -----------------------------------------------------
     # SOURCES
@@ -7977,6 +8017,16 @@ def analyze_product(
 
         validation=validation
     )
+
+    if out_of_scope_reasons is not None:
+        action_plan = [
+            "Check that the ingredients fit the selected product type: "
+            + " ".join(out_of_scope_reasons),
+            "If the product type is wrong (e.g. a spice entered as Cosmetic), "
+            "select the correct type and analyze again.",
+            "If this ingredient really is used in this product type, the system "
+            "has no record of that use yet; have it verified by an IP/TK/ABS expert.",
+        ]
 
     # -----------------------------------------------------
     # MVP ENHANCEMENT OUTPUTS
