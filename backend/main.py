@@ -3465,7 +3465,7 @@ Never convert retrieval signals into legal conclusions.
         )
 
         data = {
-            "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+            "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
             "messages": [{"role": "user", "content": prompt}],
             "response_format": {"type": "json_object"},
             "temperature": 0.9
