@@ -194,6 +194,13 @@ function Dashboard() {
           data = await response.json();
           break;
         }
+        if (response.status === 422) {
+          // Backend understood the request but rejected the input.
+          const body = await response.json().catch(() => ({}));
+          setError(toStr(body.detail?.message || "Please check the product details and try again."));
+          setLoading(false);
+          return;
+        }
       } catch (err) {
         // Fallback to next endpoint or instant smart analysis
       }

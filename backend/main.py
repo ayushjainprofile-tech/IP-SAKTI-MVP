@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 
 load_dotenv()
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, Iterable, List
@@ -7564,6 +7564,32 @@ def analyze_product(
     product: ProductInput
 ):
 
+    # Product Context Engine gate: if nothing in the input is a real
+    # word or known ingredient, there is nothing to analyze.
+    if PRODUCT_CONTEXT_ENGINE_AVAILABLE:
+        gate_context = analyze_product_context(
+            product_name=product.product_name,
+            ingredients=product.ingredients,
+            purpose=product.purpose,
+            product_type=product.product_type,
+            jurisdiction=product.jurisdiction,
+            traditional_knowledge=product.based_on_traditional_knowledge,
+        )
+        if "input_not_recognized" in (_context_value(gate_context, "ambiguities", []) or []):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "status": "INPUT_NOT_RECOGNIZED",
+                    "message": (
+                        "Input not recognised: the product name, ingredients and "
+                        "intended use contain no real word or known ingredient. "
+                        "Please enter real ingredient names (e.g. Neem, Turmeric) "
+                        "and a clear intended use (e.g. skin care, joint pain)."
+                    ),
+                    "reasons": _context_value(gate_context, "relevance_reasons", []),
+                },
+            )
+
     logger.info(
         "=" * 70
     )
@@ -8010,7 +8036,7 @@ def analyze_product(
     # product-purpose conclusion. If the deterministic confidence
     # layer identifies a context mismatch, override the narrative
     # assessment with a transparent abstention message.
-    if confidence.get("status") == "CONTEXT_MISMATCH":
+    if confidence.get("status") in ("CONTEXT_MISMATCH", "OUT_OF_SCOPE"):
         mismatch_message = confidence.get(
             "message",
             "Retrieved evidence does not align with the user's stated purpose."

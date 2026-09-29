@@ -14,6 +14,7 @@ It does not make medical, safety, efficacy, or legal conclusions.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 import json
@@ -23,6 +24,23 @@ import re
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_ONTOLOGY_PATH = BASE_DIR / "data" / "ingredient_ontology.json"
 DEFAULT_EXAMPLES_PATH = BASE_DIR / "data" / "product_context_examples.json"
+# English dictionary words + words seen in the TK/IP/ABS corpus.
+DEFAULT_VOCABULARY_PATH = BASE_DIR / "data" / "vocabulary.txt"
+
+# Common Ayurvedic / Hinglish product words that a dictionary will not know.
+INDIAN_PRODUCT_WORDS = {
+    "churna", "choorna", "vati", "bhasma", "kwath", "kadha", "arishta", "asava",
+    "taila", "tailam", "ghrita", "lepa", "lep", "rasayana", "guggulu", "avaleha",
+    "punarnava", "guduchi", "haritaki", "bibhitaki", "arjuna", "manjistha",
+    "shankhpushpi", "jatamansi", "kalonji", "ajwain", "jeera", "hing", "methi",
+    "kesar", "chandan", "kumkumadi", "ubtan", "besan", "haldi", "mirch", "adrak",
+    "lahsun", "pudina", "nimbu", "gulab", "mehendi", "mehndi", "reetha",
+    "shikakai", "kapoor", "kattha", "elaichi", "dalchini", "laung", "jaiphal",
+    "javitri", "saunf", "isabgol", "sabun", "tel", "twacha", "chehra", "dard",
+    "pet", "khansi", "bukhar", "dawa", "dawai", "jadi", "buti", "desi",
+    "gharelu", "nuskha", "masala", "achar", "chai", "sharbat", "ayurvedic",
+    "ayush", "siddha", "unani", "homeopathic",
+}
 
 
 PRODUCT_TAXONOMY = {
@@ -126,6 +144,20 @@ class ProductContext:
         return asdict(self)
 
 
+@lru_cache(maxsize=1)
+def _load_vocabulary(path: str) -> frozenset[str]:
+    words = set(INDIAN_PRODUCT_WORDS)
+    for pattern_words in (PRODUCT_TAXONOMY.values(), [FORM_PATTERNS]):
+        for group in pattern_words:
+            for phrase in group:
+                words.update(re.findall(r"[a-z]{3,}", phrase.lower()))
+    vocab_path = Path(path)
+    if vocab_path.exists():
+        with vocab_path.open("r", encoding="utf-8") as f:
+            words.update(line.strip() for line in f if line.strip())
+    return frozenset(words)
+
+
 class ProductContextEngine:
     """Data-driven product-context analyzer."""
 
@@ -139,6 +171,8 @@ class ProductContextEngine:
         self.ontology = self._load_json(self.ontology_path)
         self.examples = self._load_json(self.examples_path) if self.examples_path.exists() else []
 
+        self.vocabulary = _load_vocabulary(str(DEFAULT_VOCABULARY_PATH))
+
         self._alias_to_canonical: dict[str, str] = {}
         self._scientific_to_canonical: dict[str, str] = {}
         for canonical, record in self.ontology.items():
@@ -146,6 +180,19 @@ class ProductContextEngine:
                 self._alias_to_canonical[self._norm(value)] = canonical
             for value in record.get("scientific_names", []):
                 self._scientific_to_canonical[self._norm(value)] = canonical
+
+    def has_known_words(self, *texts: Any) -> bool:
+        """True if any word in the input is a real word or known ingredient.
+
+        Non-Latin script (e.g. Hindi) cannot be checked and counts as known.
+        """
+        raw = " ".join(str(x) for x in texts if x)
+        if re.search(r"[^\x00-\x7f]", raw):
+            return True
+        tokens = re.findall(r"[a-z]{3,}", self._norm(raw))
+        return any(
+            t in self.vocabulary or t in self._alias_to_canonical for t in tokens
+        )
 
     @staticmethod
     def _load_json(path: Path) -> Any:
@@ -332,12 +379,11 @@ class ProductContextEngine:
             else:
                 possible_contexts = ["food/spice", "traditional knowledge", "other preparation"]
         known_ingredients = [x for x in ingredient_list if x in self.ontology]
-        # Nothing recognisable: no known ingredient and no use signal
-        # (e.g. random text). Form/type/jurisdiction alone mean nothing.
-        stated_use_signal = bool(
-            self._match_use(" ".join(x for x in [product_name or "", purpose or ""] if x))
+        # Nothing recognisable: no known ingredient and not a single real
+        # word (e.g. "uoi 9 f"). Form/type/jurisdiction alone mean nothing.
+        unrecognized_input = not known_ingredients and not self.has_known_words(
+            product_name, purpose, *(ingredients or [])
         )
-        unrecognized_input = not known_ingredients and not stated_use_signal
         if not ingredient_list:
             ambiguities.append("ingredient_not_resolved")
         elif not known_ingredients:
@@ -392,8 +438,9 @@ class ProductContextEngine:
         if unrecognized_input:
             score = min(score, 0.20)
             relevance_reasons = relevance_reasons + [
-                "Neither the ingredients nor the intended use are recognised; "
-                "please enter real ingredient names and a clear intended use."
+                "The product name, ingredients and intended use contain no "
+                "recognisable word or ingredient; please enter real "
+                "ingredient names and a clear intended use."
             ]
         if relevance_status == "IRRELEVANT":
             score = 0.0
