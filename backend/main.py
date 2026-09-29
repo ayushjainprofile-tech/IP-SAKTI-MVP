@@ -1,5 +1,7 @@
+from dotenv import load_dotenv
+
+load_dotenv()
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, Iterable, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,6 +17,44 @@ import logging
 from functools import lru_cache
 
 import ollama
+
+# =========================================================
+# PRODUCT CONTEXT ENGINE (ADDITIVE INTEGRATION)
+# =========================================================
+try:
+    from product_context_engine import (
+        analyze_product_context,
+        build_contextual_queries,
+    )
+    PRODUCT_CONTEXT_ENGINE_AVAILABLE = True
+except Exception as e:
+    analyze_product_context = None
+    build_contextual_queries = None
+    PRODUCT_CONTEXT_ENGINE_AVAILABLE = False
+    logging.warning(
+        "Product Context Engine unavailable: %r",
+        e,
+    )
+
+
+def _context_value(context, name, default=None):
+    if isinstance(context, dict):
+        return context.get(name, default)
+    return getattr(context, name, default)
+
+
+def _context_to_dict(context):
+    if context is None:
+        return None
+    if isinstance(context, dict):
+        return context
+    try:
+        return asdict(context)
+    except Exception:
+        try:
+            return dict(vars(context))
+        except Exception:
+            return {"value": str(context)}
 
 # =========================================================
 # AGENTIC AI CHAT ADDITION
@@ -70,6 +110,53 @@ except Exception as e:
     ):
         return []
 
+
+# =========================================================
+# UNIFIED KNOWLEDGE BASE + RETRIEVER INTEGRATION
+# =========================================================
+# The specialized modules remain independently testable, while main.py
+# becomes the single orchestration layer for the API.
+#
+# Flow:
+# Product context
+#   -> domain routing
+#   -> unified retriever
+#      -> keyword/BM25-style lexical retrieval
+#      -> BGE semantic retrieval
+#      -> ingredient/entity matching
+#      -> domain concept matching
+#      -> TK vector retrieval (when TK is requested)
+#   -> evidence validation
+#   -> grounded reasoning
+#   -> confidence / abstention / escalation
+#
+# IMPORTANT:
+# Retrieval similarity is not final confidence.
+# Ingredient matches are supporting retrieval signals only.
+
+try:
+    from data.retriever import retrieve_evidence as unified_retrieve_evidence
+    UNIFIED_RETRIEVER_AVAILABLE = True
+except Exception as e:
+    unified_retrieve_evidence = None
+    UNIFIED_RETRIEVER_AVAILABLE = False
+    logging.warning("Unified retriever unavailable: %r", e)
+
+try:
+    from knowledge_base import (
+        load_knowledge_base as kb_load_knowledge_base,
+        build_corpus as kb_build_corpus,
+        load_corpus as kb_load_corpus,
+        stats as kb_stats,
+    )
+    KNOWLEDGE_BASE_AVAILABLE = True
+except Exception as e:
+    kb_load_knowledge_base = None
+    kb_build_corpus = None
+    kb_load_corpus = None
+    kb_stats = None
+    KNOWLEDGE_BASE_AVAILABLE = False
+    logging.warning("Knowledge base module unavailable: %r", e)
 
 # =========================================================
 # LOGGING
@@ -155,6 +242,22 @@ MAX_QUERY_LENGTH = max(
 # =========================================================
 # APP
 # =========================================================
+# =========================================================
+# RAG ENGINE CAPABILITIES
+# =========================================================
+
+def get_rag_engine_status() -> Dict[str, Any]:
+    """Expose which upgraded RAG components are actually available."""
+    return {
+        "unified_retriever": bool(UNIFIED_RETRIEVER_AVAILABLE),
+        "knowledge_base": bool(KNOWLEDGE_BASE_AVAILABLE),
+        "embeddings": bool(EMBEDDINGS_AVAILABLE),
+        "embedding_model": EMBEDDING_MODEL,
+        "tk_vector_index": bool(
+            UNIFIED_RETRIEVER_AVAILABLE
+        ),
+    }
+
 
 app = FastAPI(
 
@@ -166,14 +269,6 @@ app = FastAPI(
         "Evidence-first IP / Traditional Knowledge / "
         "Access and Benefit Sharing assessment prototype."
     )
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 
@@ -370,15 +465,44 @@ def _load_corpus():
         return []
 
 
-def load_corpus(
-    force_reload=False
-):
+def load_corpus(force_reload=False):
+    """
+    Load the runtime corpus.
 
+    Priority:
+    1. data/corpus.json used by the existing API.
+    2. The upgraded knowledge_base.py loader as a fallback.
+
+    This keeps the existing corpus contract intact while allowing the
+    upgraded PDF/JSON/JSONL knowledge-base pipeline to feed the API.
+    """
     if force_reload:
+        try:
+            _load_corpus.cache_clear()
+        except Exception:
+            pass
 
-        _load_corpus.cache_clear()
+    corpus = _load_corpus()
 
-    return _load_corpus()
+    if corpus:
+        return corpus
+
+    if KNOWLEDGE_BASE_AVAILABLE and kb_load_knowledge_base is not None:
+        try:
+            kb_records = kb_load_knowledge_base()
+            if kb_records:
+                logger.info(
+                    "Using knowledge_base.py fallback: %d records.",
+                    len(kb_records)
+                )
+                return kb_records
+        except Exception as e:
+            logger.exception(
+                "Knowledge-base fallback failed: %r",
+                e
+            )
+
+    return []
 
 
 # =========================================================
@@ -733,6 +857,22 @@ INGREDIENT_ALIASES = {
         "aloe_vera",
         "aloe_barbadensis",
         "barbadensis"
+    },
+
+    # Retrieval aliases only. These do not establish safety,
+    # efficacy, TK, ABS obligations, or legal status.
+    "ginger": {
+        "ginger",
+        "zingiber",
+        "zingiber_officinale"
+    },
+
+    "chilli": {
+        "chilli",
+        "chili",
+        "capsicum",
+        "capsicum_annuum",
+        "capsaicin"
     }
 }
 
@@ -1033,26 +1173,7 @@ def classify_product(
 
         tk_status = "UNKNOWN"
 
-    domains = detect_domains(product)
-
-    label = f"{product.product_type} ({'TK Based' if tk_status == 'YES' else 'Standard Assessment'})"
-
-    reasons = [
-        f"Product Name: {product.product_name}",
-        f"Product Type: {product.product_type}",
-        f"Stated Purpose: {product.purpose}",
-        f"Jurisdiction: {product.jurisdiction}",
-        f"Traditional Knowledge Status: {tk_status}",
-        f"Routed Knowledge Domains: {', '.join(domains)}"
-    ]
-
     return {
-
-        "label":
-            label,
-
-        "reasons":
-            reasons,
 
         "product_type":
             product.product_type,
@@ -1437,11 +1558,12 @@ def calculate_evidence_quality(
 # CORPUS SEARCH
 # =========================================================
 
-def search_corpus(
+def search_corpus_legacy(
     query,
     domains,
     ingredients=None,
-    top_k=5
+    top_k=5,
+    product=None,
 ):
 
     if ingredients is None:
@@ -1717,27 +1839,32 @@ def search_corpus(
 
         try:
 
+            # Call semantic_search using its supported API.
+            # Apply the configured threshold locally for compatibility.
             semantic_results = semantic_search(
-
                 query=query,
-
                 documents=semantic_documents,
-
-                top_k=max(
-                    top_k * 3,
-                    10
-                ),
-
-                min_similarity=(
-                    MIN_SEMANTIC_SIMILARITY
-                )
+                top_k=max(top_k * 3, 10),
             )
+
+            filtered_semantic_results = []
+
+            for semantic_item in semantic_results or []:
+                try:
+                    similarity = float(
+                        semantic_item.get("similarity", 0.0)
+                    )
+                except (TypeError, ValueError):
+                    similarity = 0.0
+
+                if similarity >= MIN_SEMANTIC_SIMILARITY:
+                    filtered_semantic_results.append(semantic_item)
+
+            semantic_results = filtered_semantic_results
 
             logger.info(
                 "BGE candidates: %d",
-                len(
-                    semantic_results
-                )
+                len(semantic_results)
             )
 
         except Exception as e:
@@ -1987,14 +2114,57 @@ def search_corpus(
             similarity * 10.0
         )
 
+        # Ingredient matching is a retrieval signal only.
+        # It must not dominate ranking or become a proxy for
+        # support of the user's stated purpose.
         ingredient_bonus = min(
             len(
                 result[
                     "ingredient_matches"
                 ]
-            ) * 2.5,
-            7.5
+            ) * 1.0,
+            3.0
         )
+
+        # Context relevance adjustment
+        
+        context_alignment = _evidence_context_alignment(
+            result,
+            product
+        )
+
+        if not isinstance(
+            context_alignment,
+            dict
+        ):
+            context_alignment = {}
+
+        # Persist context alignment on the final evidence item.
+        # The confidence layer evaluates these final evidence objects.
+        result["context_alignment"] = context_alignment
+
+        purpose_alignment = float(
+            context_alignment.get(
+                "purpose_alignment",
+                0.0
+            )
+        )
+
+        product_type_alignment = float(
+            context_alignment.get(
+                "product_type_alignment",
+                0.0
+            )
+        )
+
+        # Ingredient matches alone must not strongly
+        # rank unrelated evidence.
+        if (
+            result.get("ingredient_matches")
+            and purpose_alignment < 0.25
+            and product_type_alignment < 0.25
+        ):
+            ingredient_bonus = 0.0
 
         domain_bonus = (
             2.5
@@ -2133,6 +2303,14 @@ def search_corpus(
             "evidence_basis"
         ] = evidence_basis
 
+        # Explicitly mark ingredient evidence as a supporting
+        # retrieval signal, not a purpose/claim determination.
+        result[
+            "ingredient_evidence_is_supporting_only"
+        ] = bool(
+            result.get("ingredient_matches")
+        )
+
         # NEW:
         # Explicitly record which detected domains
         # this evidence actually supports.
@@ -2267,6 +2445,53 @@ def search_corpus(
     return selected[
         :top_k
     ]
+
+def search_corpus(
+    query,
+    domains,
+    ingredients=None,
+    top_k=5,
+    product=None,
+):
+    """
+    API-compatible retrieval entry point.
+
+    The upgraded retriever is the primary engine. The previous hybrid
+    implementation remains available as search_corpus_legacy() so no
+    existing retrieval capability is discarded.
+
+    When a ProductInput is available, the unified retriever can use the
+    full product context. For older internal callers that only provide a
+    query/domains/ingredients, the legacy engine remains the safe fallback.
+    """
+    ingredients = ingredients or []
+
+    # Preferred path: context-aware unified retrieval.
+    if UNIFIED_RETRIEVER_AVAILABLE and unified_retrieve_evidence is not None:
+        try:
+            if product is not None:
+                results = unified_retrieve_evidence(
+                    product,
+                    domains,
+                    top_k=max(1, int(top_k)),
+                )
+                if results:
+                    return results[:max(1, int(top_k))]
+        except Exception as e:
+            logger.exception(
+                "Unified retriever failed; falling back to legacy retrieval: %r",
+                e
+            )
+
+    # Backward-compatible path.
+    return search_corpus_legacy(
+        query=query,
+        domains=domains,
+        ingredients=ingredients,
+        top_k=top_k,
+        product=product,
+    )
+
 
 
 # =========================================================
@@ -3220,13 +3445,13 @@ Never convert retrieval signals into legal conclusions.
 """
 
     try:
-        
+
         groq_api_key = os.getenv("GROQ_API_KEY")
         if not groq_api_key:
             return normalize_llm_analysis({
                 "summary": "Groq API Key not found. Please add GROQ_API_KEY in Render environment variables."
             })
-            
+
         req = Request(
             "https://api.groq.com/openai/v1/chat/completions",
             method="POST",
@@ -3235,13 +3460,14 @@ Never convert retrieval signals into legal conclusions.
                 "Content-Type": "application/json"
             }
         )
-        
+
         data = {
-            "model": "llama3-8b-8192",
+            "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
             "messages": [{"role": "user", "content": prompt}],
-            "response_format": {"type": "json_object"}
+            "response_format": {"type": "json_object"},
+            "temperature": 0.9
         }
-        
+
         with urlopen(req, data=json.dumps(data).encode("utf-8"), timeout=30) as response:
             res_body = response.read().decode("utf-8")
             res_json = json.loads(res_body)
@@ -3343,221 +3569,1266 @@ Never convert retrieval signals into legal conclusions.
 # CONFIDENCE
 # =========================================================
 
-def calculate_confidence(
-    evidence,
-    validation
-):
+def _alignment_tokens(text):
+    """Return meaningful normalized tokens for claim/context alignment."""
+    normalized = normalize_text(text)
+    return {
+        token
+        for token in re.findall(r"\b[a-z][a-z0-9_]{2,}\b", normalized)
+        if token not in STOPWORDS
+    }
 
-    # IMPORTANT:
-    # This is retrieval/evidence confidence.
-    # It is NOT legal confidence.
 
-    if not evidence:
+def _text_alignment_score(reference_text, evidence_text):
+    """
+    Measure whether evidence text actually discusses the user's
+    stated reference text.
 
+    This is intentionally conservative:
+    - exact phrase match = strongest signal
+    - token overlap = supporting signal
+    - empty/very generic references = no score
+
+    Retrieval similarity and ingredient matching are NOT used here.
+    """
+    reference = str(reference_text or "").strip()
+    evidence = str(evidence_text or "").strip()
+
+    if not reference or not evidence:
+        return 0.0
+
+    if phrase_in_text(evidence, reference):
+        return 1.0
+
+    reference_tokens = _alignment_tokens(reference)
+    evidence_tokens = _alignment_tokens(evidence)
+
+    if not reference_tokens:
+        return 0.0
+
+    overlap = len(reference_tokens & evidence_tokens) / len(reference_tokens)
+
+    # Very small generic overlaps such as "use", "product", etc.
+    # must not create meaningful purpose support.
+    if overlap < 0.25:
+        return 0.0
+
+    return round(min(1.0, overlap), 3)
+
+
+def _evidence_context_alignment(evidence_item, product=None):
+    """
+    Evaluate whether retrieved evidence supports the actual
+    product context rather than merely matching an ingredient.
+
+    This is a retrieval/context signal, not a legal conclusion.
+    """
+    if product is None:
         return {
-
-            "level":
-                "LOW",
-
-            "score":
-                0.0,
-
-            "basis": [
-                "No relevant evidence was retrieved."
-            ],
-
-            "warning":
-                (
-                    "This score does not represent "
-                    "legal certainty."
-                )
+            "purpose_alignment": 0.0,
+            "product_type_alignment": 0.0,
+            "jurisdiction_alignment": 0.0,
+            "ingredient_only": bool(
+                evidence_item.get("ingredient_matches")
+            ),
         }
 
-    supported_domains = validation.get(
-        "supported_domains",
-        []
+    evidence_text = str(
+        evidence_item.get("text", "")
+        or evidence_item.get("evidence_text", "")
+        or ""
     )
 
-    strongest = evidence[
-        0
+    purpose = str(
+        getattr(product, "purpose", "")
+        or ""
+    ).strip()
+
+    product_type = str(
+        getattr(product, "product_type", "")
+        or ""
+    ).strip()
+
+    product_name = str(
+        getattr(product, "product_name", "")
+        or ""
+    ).strip()
+
+    ingredients = [
+        str(item).strip()
+        for item in (getattr(product, "ingredients", []) or [])
+        if str(item).strip()
     ]
 
-    strongest_score = float(
-        strongest.get(
-            "score",
-            0.0
+    # Direct textual alignment.
+    purpose_alignment = _text_alignment_score(
+        purpose,
+        evidence_text,
+    )
+
+    product_type_alignment = _text_alignment_score(
+        product_type,
+        evidence_text,
+    )
+
+    product_name_alignment = _text_alignment_score(
+        product_name,
+        evidence_text,
+    )
+
+    # Ingredient presence is useful only when combined with
+    # meaningful traditional/therapeutic/product context.
+    ingredient_scores = []
+    normalized_evidence = normalize_text(evidence_text)
+    normalized_ingredients = []
+    for ingredient in ingredients:
+        ingredient = str(ingredient).strip()
+        if not ingredient:
+            continue
+        normalized_ingredients.append(ingredient)
+        score = _text_alignment_score(
+            ingredient,
+            evidence_text,
+        )
+        # Also recognize a direct normalized ingredient occurrence even
+        # when the retriever did not populate ingredient_matches.
+        normalized_ingredient = normalize_text(ingredient)
+        direct_occurrence = (
+            bool(normalized_ingredient)
+            and normalized_ingredient in normalized_evidence
+        )
+        if score > 0:
+            ingredient_scores.append(score)
+        elif direct_occurrence:
+            ingredient_scores.append(0.75)
+
+    ingredient_context = (
+        max(ingredient_scores)
+        if ingredient_scores
+        else 0.0
+    )
+
+    # Traditional-knowledge / therapeutic vocabulary.
+    context_terms = {
+        "traditional",
+        "traditional_knowledge",
+        "prior_art",
+        "tkdl",
+        "ayurveda",
+        "ayurvedic",
+        "therapeutic",
+        "treatment",
+        "medicinal",
+        "medicine",
+        "use",
+        "preparation",
+        "formulation",
+        "inflammation",
+        "pain",
+        "joint",
+    }
+
+    context_term_hits = sum(
+        1
+        for term in context_terms
+        if term in normalized_evidence
+    )
+
+    context_support = min(
+        1.0,
+        context_term_hits / 4.0
+    )
+
+    # If an ingredient is present AND the evidence discusses
+    # traditional/therapeutic context, treat it as contextual
+    # support rather than an ingredient-only hit.
+    contextual_ingredient_support = min(
+        1.0,
+        0.50 * ingredient_context
+        + 0.50 * context_support
+    )
+
+    # Product-name alignment can rescue cases where the product
+    # name contains the exact traditional ingredient/use phrase.
+    combined_context = max(
+        purpose_alignment,
+        product_name_alignment * 0.90,
+        contextual_ingredient_support * 0.85,
+    )
+
+    # ---------------------------------------------------------
+    # DIRECT THERAPEUTIC CONTEXT BOOST
+    # ---------------------------------------------------------
+    # Legal/TK evidence often describes the same concept without
+    # repeating the user's full sentence. For example:
+    #
+    # User: "traditional use of Zingiber zerumbet for inflammation"
+    # Evidence: "Zingiber zerumbet ... treatment of inflammation ...
+    #            prior art (TKDL) ..."
+    #
+    # _text_alignment_score() can under-score this because the full
+    # purpose phrase is not verbatim. Recognize the underlying
+    # contextual relationship without treating ingredient overlap
+    # alone as evidence.
+    purpose_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9]+", normalize_text(purpose))
+        if len(token) >= 4
+        and token not in {
+            "traditional", "traditionally", "documented", "purpose",
+            "preparation", "preparations", "product", "products",
+            "based", "use", "used", "using", "with", "from",
+            "this", "that", "for", "the", "and", "ayurvedic",
+        }
+    }
+
+    evidence_tokens = set(
+        re.findall(r"[a-z0-9]+", normalized_evidence)
+    )
+
+    purpose_concept_hits = (
+        purpose_tokens & evidence_tokens
+    )
+
+    therapeutic_purpose_terms = {
+        "inflammation", "inflammatory", "pain", "joint",
+        "wound", "wounds", "healing", "asthma", "asthmatic",
+        "fertility", "ulcer", "ulcers", "skin", "disease",
+        "diseases", "treatment", "therapeutic", "medicinal",
+    }
+
+    therapeutic_hits = (
+        purpose_concept_hits & therapeutic_purpose_terms
+    )
+
+    direct_ingredient_present = ingredient_context >= 0.70
+
+    # Strong contextual relationship:
+    # ingredient + therapeutic purpose + traditional/TK context.
+    if (
+        direct_ingredient_present
+        and therapeutic_hits
+        and context_support >= 0.50
+    ):
+        combined_context = max(
+            combined_context,
+            0.80,
+        )
+
+    # If multiple meaningful purpose concepts are present, reward the
+    # direct relationship further, but never above 0.95 from this rule.
+    if (
+        direct_ingredient_present
+        and len(therapeutic_hits) >= 1
+        and len(purpose_concept_hits) >= 2
+        and context_support >= 0.75
+    ):
+        combined_context = max(
+            combined_context,
+            0.88,
+        )
+
+    # Product-type text such as "Ayurvedic traditional preparation"
+    # often does not appear verbatim in a legal/TK guideline.
+    # Traditional/Ayurvedic evidence terms provide bounded support.
+    if (
+        any(
+            term in normalize_text(product_type)
+            for term in (
+                "ayurveda",
+                "ayurvedic",
+                "traditional",
+                "medicinal",
+                "preparation",
+            )
+        )
+        and context_support > 0
+    ):
+        product_type_alignment = max(
+            product_type_alignment,
+            min(0.85, context_support),
+        )
+
+    jurisdiction = str(
+        getattr(product, "jurisdiction", "")
+        or ""
+    ).strip()
+
+    jurisdiction_alignment = (
+        1.0
+        if jurisdiction
+        and phrase_in_text(
+            evidence_text,
+            jurisdiction,
+        )
+        else 0.0
+    )
+
+    # An ingredient is "ingredient-only" only when the evidence
+    # fails to establish any meaningful product/use context.
+    ingredient_only = bool(
+        evidence_item.get("ingredient_matches")
+    ) and combined_context < 0.25
+
+    return {
+        "purpose_alignment": round(
+            min(1.0, combined_context),
+            3,
+        ),
+        "product_type_alignment": round(
+            min(1.0, product_type_alignment),
+            3,
+        ),
+        "jurisdiction_alignment": round(
+            jurisdiction_alignment,
+            3,
+        ),
+        "ingredient_only": ingredient_only,
+    }
+
+def _common_sense_context_check(product):
+    """
+    Deterministic plausibility guard.
+
+    This is NOT a medical/legal safety engine. It only detects obvious
+    product/ingredient/purpose combinations that deserve caution before
+    retrieval evidence is converted into confidence.
+
+    The rule is intentionally conservative:
+    - it can LOWER confidence or request verification;
+    - it never proves that a product is unsafe;
+    - it never proves that a product is patentable/compliant/legal.
+    """
+    if product is None:
+        return {
+            "status": "NOT_EVALUATED",
+            "score": 1.0,
+            "warnings": [],
+            "basis": [],
+        }
+
+    name = normalize_text(getattr(product, "product_name", ""))
+    ingredients_text = normalize_text(
+        " ".join(getattr(product, "ingredients", []) or [])
+    )
+    purpose = normalize_text(getattr(product, "purpose", ""))
+    product_type = normalize_text(getattr(product, "product_type", ""))
+
+    combined = " ".join([
+        name, ingredients_text, purpose, product_type
+    ])
+
+    warnings = []
+    basis = []
+
+    # Ingredient/purpose combinations that deserve an explicit
+    # plausibility check. These are NOT determinations of harm.
+    topical_face_terms = {
+        "face", "facial", "facial_skin", "facial_care",
+        "moisturizer", "moisturizing", "skin_hydration",
+        "skin_hydration", "skin_care", "skincare"
+    }
+    chilli_terms = {
+        "chilli", "chili", "chilli_powder", "chili_powder",
+        "capsicum", "capsaicin"
+    }
+
+    purpose_tokens = _alignment_tokens(purpose)
+    type_tokens = _alignment_tokens(product_type)
+    combined_tokens = _alignment_tokens(combined)
+
+    is_topical_face = bool(
+        purpose_tokens & topical_face_terms
+        or type_tokens & {"cosmetic"}
+        and (
+            "face" in purpose_tokens
+            or "facial" in purpose_tokens
+            or "moisturizer" in purpose_tokens
+            or "moisturizing" in purpose_tokens
         )
     )
-
-    similarity = strongest.get(
-        "similarity"
+    has_chilli = any(
+        phrase_in_text(ingredients_text, term)
+        for term in chilli_terms
     )
 
-    ingredient_match = bool(
-        strongest.get(
-            "ingredient_matches"
+    if has_chilli and is_topical_face:
+        warnings.append(
+            "The ingredient and stated facial/skincare use deserve "
+            "a formulation and safety check; the system should not "
+            "assume suitability from an ingredient match alone."
         )
-    )
-
-    domain_evidence = bool(
-        strongest.get(
-            "supported_domains"
+        basis.append(
+            "ingredient-purpose plausibility warning"
         )
-    )
 
-    evidence_quality = float(
-        strongest.get(
-            "evidence_quality",
-            0.0
-        )
-    )
+    # Obvious category conflicts. These do not mean the product is
+    # impossible; they indicate that the user should verify the
+    # classification/claim before relying on the assessment.
+    if product_type == "cosmetic":
+        medicinal_terms = {
+            "treat", "treatment", "cure", "disease", "arthritis",
+            "infection", "diabetes", "cancer", "pain_relief",
+            "joint_pain", "therapeutic"
+        }
+        if purpose_tokens & medicinal_terms:
+            warnings.append(
+                "The stated purpose may involve a medicinal/therapeutic "
+                "claim while the selected product type is cosmetic; "
+                "verify the applicable product classification and claims."
+            )
+            basis.append(
+                "product-type/claim plausibility warning"
+            )
 
-    status = validation.get(
-        "status"
-    )
-
-    # No domain actually supported.
-    if not supported_domains:
-
-        level = "LOW"
-        score = 0.0
-
-    # No ingredient matched in the evidence.
-    elif not ingredient_match:
-
-        level = "LOW"
-        score = 0.0
-
-    # Mixed result:
-    # some domains supported, some unsupported.
-    elif status == "PARTIAL":
-
-        if (
-            strongest_score >= 12
-            and domain_evidence
-            and evidence_quality >= 0.60
+    if product_type in {"food", "nutraceutical", "ayurveda_aahar"}:
+        topical_terms = {
+            "cream", "gel", "balm", "ointment", "topical",
+            "face", "facial", "skin", "shampoo"
+        }
+        if purpose_tokens & topical_terms or any(
+            phrase_in_text(name, term) for term in topical_terms
         ):
+            warnings.append(
+                "The stated product type and intended use may not align; "
+                "verify the classification before relying on the result."
+            )
+            basis.append(
+                "product-type/use plausibility warning"
+            )
 
-            level = "MEDIUM"
-            score = 0.65
+    if warnings:
+        return {
+            "status": "PLAUSIBILITY_WARNING",
+            "score": 0.45,
+            "warnings": warnings,
+            "basis": basis,
+        }
 
-        else:
+    return {
+        "status": "COHERENT",
+        "score": 1.0,
+        "warnings": [],
+        "basis": ["No obvious product-context contradiction detected."],
+    }
 
-            level = "LOW"
-            score = 0.45
 
-    elif status == "UNSUPPORTED":
 
-        level = "LOW"
+def _ayurveda_ecosystem_relevance(product, validation=None):
+    """
+    First-stage relevance gate for confidence calibration.
+
+    The confidence score is meaningful only when the user's product/query
+    belongs to the Ayurveda/AYUSH/TK/biological-material IP ecosystem.
+    Explicitly unrelated products (e.g. pizza, phones, engine oil) must
+    return 0% even if individual words/ingredients occur in the corpus.
+
+    Returns:
+        (is_relevant, reason)
+    """
+    if product is None:
+        return False, "No product context was provided."
+
+    def norm(value):
+        return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+    name = norm(getattr(product, "product_name", ""))
+    purpose = norm(getattr(product, "purpose", ""))
+    ptype = norm(getattr(product, "product_type", ""))
+    ingredients = [
+        norm(x) for x in (getattr(product, "ingredients", []) or [])
+        if norm(x)
+    ]
+
+    combined = " ".join([name, purpose, ptype] + ingredients)
+
+    # Explicit non-health/non-Ayurveda product categories are a hard 0.
+    explicit_unrelated = (
+        "electronic device", "smartphone", "mobile phone", "laptop",
+        "computer", "software", "app", "automobile", "car tyre", "tire",
+        "engine oil", "motor oil", "lubricant", "hardware", "battery",
+        "television", "tv", "washing machine", "refrigerator", "pizza",
+        "burger", "fast food", "soft drink", "beverage", "clothing",
+        "shoe", "furniture", "cement", "steel", "construction material",
+    )
+    if any(term in ptype or term in name for term in explicit_unrelated):
+        return False, "Product is explicitly outside the Ayurveda/AYUSH ecosystem."
+
+    # Explicit food is not automatically Ayurveda. Ayurveda-Aahar/AYUSH/
+    # medicinal/traditional context is required.
+    if any(term in ptype for term in ("food", "snack", "beverage", "restaurant")):
+        food_relevance = (
+            "ayur-aahar" in combined
+            or "ayurveda" in combined
+            or "ayush" in combined
+            or "traditional medicinal" in combined
+            or "medicinal" in combined
+        )
+        if not food_relevance:
+            return False, "Food input has no Ayurveda/AYUSH/medicinal context."
+
+    positive_context = (
+        "ayurveda", "ayurvedic", "ayush", "traditional knowledge",
+        "traditional medicinal", "traditional medicine", "classical medicine",
+        "proprietary medicine", "new drug", "non-classical",
+        "herbal medicinal", "herbal preparation", "herbal formulation",
+        "medicinal preparation", "medicinal formulation", "medicinal plant",
+        "phytopharmaceutical", "ayur-aahar", "nutraceutical",
+        "traditional preparation", "traditional use", "tk based",
+        "traditional system of medicine", "biological material",
+    )
+
+    # Validation can establish relevance when the user has not literally
+    # written "Ayurveda" in the product name.
+    validation_domains = set()
+    if isinstance(validation, dict):
+        validation_domains.update(
+            norm(x) for x in (validation.get("supported_domains") or [])
+        )
+
+    has_positive_context = any(term in combined for term in positive_context)
+    has_relevant_domain = bool(
+        validation_domains.intersection({"tk", "abs", "ip"})
+    )
+
+    # A clearly medicinal/traditional purpose is enough to enter the
+    # Ayurveda ecosystem even if the exact word "Ayurveda" is absent.
+    medicinal_purpose = any(
+        term in purpose
+        for term in (
+            "treat", "treatment", "therapy", "therapeutic", "medicinal",
+            "disease", "condition", "inflammation", "pain", "healing",
+            "wound", "fertility", "traditional use", "traditional",
+            "remedy", "medicine",
+        )
+    )
+
+    if has_positive_context or (has_relevant_domain and medicinal_purpose):
+        return True, "Product/query has meaningful Ayurveda/AYUSH/TK/IP relevance."
+
+    return False, "No meaningful Ayurveda/AYUSH/TK/IP relationship was established."
+
+
+# ---------------------------------------------------------------------------
+# CORPUS-GROUNDED CONFIDENCE POLICY
+# ---------------------------------------------------------------------------
+# Confidence must reflect the ACTUAL retrieved corpus evidence.
+#
+# 0%:
+#   - product/question is outside the Ayurveda/AYUSH/TK/IP ecosystem, OR
+#   - retrieved evidence has no meaningful contextual relationship.
+#
+# 90-95%:
+#   - corpus directly/near-directly supports the user's product/purpose
+#     relationship, with compatible product type and domain context.
+#
+# IMPORTANT:
+#   Ingredient overlap, semantic similarity, document count, or source count
+#   alone must NEVER manufacture high confidence.
+#
+# DIRECT_CORPUS_SUPPORT is an evidence classification, not a claim that the
+# source itself assigns a numerical confidence. The numerical percentage is
+# our calibration of the strength of the retrieved evidence.
+#
+# Example:
+#   Zingiber zerumbet + traditional use for inflammation
+#   If retrieved corpus evidence explicitly connects Zingiber zerumbet with
+#   inflammation/TK, that is DIRECT_CORPUS_SUPPORT and is eligible for the
+#   high-confidence band.
+# ---------------------------------------------------------------------------
+
+def calculate_confidence(
+    evidence,
+    validation,
+    product=None,
+):
+    """
+    Calculate graded confidence for the FINAL PRODUCT ASSESSMENT.
+
+    IMPORTANT:
+    - Confidence is evidence/context confidence, not legal certainty.
+    - Ingredient matches are supporting retrieval signals only.
+    - Retrieval similarity alone cannot create high confidence.
+    - A complete questionnaire does not count as evidence.
+    - High confidence requires direct or strong contextual support for
+      the user's stated purpose.
+    """
+    warning = (
+        "This is retrieval/evidence confidence, not legal certainty. "
+        "Ingredient similarity alone cannot establish the product's "
+        "stated purpose, safety, legal applicability, compliance, "
+        "patentability, or any other legal conclusion."
+    )
+
+    interpretation = {
+        "0-19%": "No or very little relevant evidence",
+        "20-39%": "Insufficient / weak evidence",
+        "40-59%": "Limited evidence; important gaps remain",
+        "60-69%": "Moderate evidence with verification needed",
+        "70-79%": "Good contextual evidence",
+        "80-89%": "Strong contextual evidence",
+        "90-95%": "Very strong, direct and well-supported evidence",
+    }
+
+    plausibility = _common_sense_context_check(product)
+
+    if not evidence:
         score = 0.0
+        return {
+            "level": "NO_RELEVANT_EVIDENCE",
+            "score": 0.0,
+            "status": "NO_RELEVANT_EVIDENCE",
+            "basis": ["No relevant evidence was retrieved."] + plausibility["basis"],
+            "supported_domains": validation.get("supported_domains", []),
+            "context_coherence": plausibility,
+            "confidence_interpretation": interpretation,
+            "warning": warning,
+        }
 
-    elif (
-        strongest_score >= 12
-        and domain_evidence
-        and ingredient_match
-        and evidence_quality >= 0.60
-    ):
+    supported_domains = validation.get("supported_domains", [])
+    unsupported_domains = validation.get("unsupported_domains", [])
+    validation_status = str(validation.get("status", "")).upper()
 
-        level = "HIGH"
-        score = 0.85
+    def _safe_float(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
 
-    elif (
-        strongest_score >= 8
-        and domain_evidence
-        and evidence_quality >= 0.40
-    ):
+    def _semantic_signal(item):
+        similarity = _safe_float(item.get("similarity"), 0.0)
+        # Similarity below ~0.55 is not strong enough to establish
+        # contextual relevance on its own.
+        return max(0.0, min(1.0, (similarity - 0.50) / 0.40))
 
-        level = "MEDIUM"
-        score = 0.70
+    evaluated = []
+    for item in evidence:
+        alignment = _evidence_context_alignment(item, product)
+        evaluated.append((item, alignment))
 
-    elif (
-        similarity is not None
-        and float(
-            similarity or 0.0
-        ) >= 0.75
-        and domain_evidence
-        and evidence_quality >= 0.35
-    ):
+    # ---------------------------------------------------------
+    # CONTEXT SUPPORT
+    # ---------------------------------------------------------
+    # Purpose alignment is the primary signal.
+    # Semantic retrieval may support it, but only when the evidence
+    # is NOT ingredient-only and the evidence also aligns with the
+    # product type.
+    context_candidates = []
+    strong_context_candidates = []
 
-        level = "MEDIUM"
-        score = 0.65
+    for item, alignment in evaluated:
+        semantic_signal = _semantic_signal(item)
 
+        product_type_ok = (
+            alignment["product_type_alignment"] >= 0.25
+            or not str(getattr(product, "product_type", "")).strip()
+        )
+
+        not_ingredient_only = not alignment["ingredient_only"]
+
+        context_strength = (
+            0.55 * alignment["purpose_alignment"]
+            + 0.15 * alignment["product_type_alignment"]
+            + 0.05 * alignment["jurisdiction_alignment"]
+            + 0.15 * semantic_signal
+            + 0.10 * _safe_float(item.get("evidence_quality"), 0.0)
+        )
+
+        # PRIMARY ROUTE:
+        # direct stated-purpose support.
+        direct_purpose = alignment["purpose_alignment"] >= 0.50
+
+        # SECONDARY ROUTE:
+        # only allow semantic context when it is strong AND the product
+        # type also fits. This prevents "Latent Powder" / "Chilli Powder"
+        # from getting confidence merely from ingredient similarity.
+        strong_semantic_context = (
+            semantic_signal >= 0.70
+            and product_type_ok
+            and not_ingredient_only
+            and plausibility["status"] == "COHERENT"
+        )
+
+        # A contextual alignment score of >= 0.25 is enough to enter
+        # the confidence calculation. It can come from a direct purpose
+        # match, product-name match, or ingredient + traditional/
+        # therapeutic context. Pure retrieval similarity still cannot
+        # enter this route by itself.
+        meaningful_context = (
+            alignment["purpose_alignment"] >= 0.25
+            and not_ingredient_only
+        )
+
+        if direct_purpose or strong_semantic_context or meaningful_context:
+            context_candidates.append(
+                (item, alignment, context_strength)
+            )
+
+        strong_direct_context = (
+            alignment["purpose_alignment"] >= 0.75
+            and alignment["product_type_alignment"] >= 0.40
+        )
+
+        strong_semantic_context_2 = (
+            semantic_signal >= 0.80
+            and alignment["product_type_alignment"] >= 0.40
+            and not_ingredient_only
+            and plausibility["status"] == "COHERENT"
+        )
+
+        if strong_direct_context or strong_semantic_context_2:
+            strong_context_candidates.append(
+                (item, alignment, context_strength)
+            )
+
+    # ---------------------------------------------------------
+    # STRONGEST EVIDENCE
+    # ---------------------------------------------------------
+    if context_candidates:
+        strongest, alignment, _ = max(
+            context_candidates,
+            key=lambda triple: (
+                triple[2],
+                _safe_float(triple[0].get("evidence_quality"), 0.0),
+                _safe_float(triple[0].get("score"), 0.0),
+            ),
+        )
     else:
+        # No contextual support: select the strongest retrieval item only
+        # for diagnostics. It must NOT be allowed to create a high score.
+        strongest, alignment = max(
+            evaluated,
+            key=lambda pair: (
+                _safe_float(pair[0].get("evidence_quality"), 0.0),
+                _semantic_signal(pair[0]),
+                _safe_float(pair[0].get("score"), 0.0),
+            ),
+        )
 
+    try:
+        similarity = (
+            float(strongest.get("similarity"))
+            if strongest.get("similarity") is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        similarity = None
+
+    purpose_alignment = max(
+        0.0,
+        min(1.0, _safe_float(alignment["purpose_alignment"], 0.0)),
+    )
+    product_type_alignment = max(
+        0.0,
+        min(1.0, _safe_float(alignment["product_type_alignment"], 0.0)),
+    )
+    jurisdiction_alignment = max(
+        0.0,
+        min(1.0, _safe_float(alignment["jurisdiction_alignment"], 0.0)),
+    )
+
+    ingredient_match = bool(strongest.get("ingredient_matches"))
+    ingredient_only = bool(alignment["ingredient_only"])
+    domain_evidence = bool(strongest.get("supported_domains"))
+
+    semantic_context_signal = (
+        0.0 if ingredient_only else _semantic_signal(strongest)
+    )
+
+    evidence_quality = max(
+        0.0,
+        min(1.0, _safe_float(strongest.get("evidence_quality"), 0.0)),
+    )
+
+    evidence_count = len(evidence)
+
+    purpose_support_count = sum(
+        1
+        for _, a in evaluated
+        if a["purpose_alignment"] >= 0.50
+    )
+
+    strong_purpose_count = sum(
+        1
+        for _, a in evaluated
+        if a["purpose_alignment"] >= 0.75
+    )
+
+    semantic_context_count = sum(
+        1
+        for item, a in evaluated
+        if (
+            not a["ingredient_only"]
+            and _semantic_signal(item) >= 0.70
+            and a["product_type_alignment"] >= 0.25
+        )
+    )
+
+    strong_semantic_count = sum(
+        1
+        for item, a in evaluated
+        if (
+            not a["ingredient_only"]
+            and _semantic_signal(item) >= 0.80
+            and a["product_type_alignment"] >= 0.40
+        )
+    )
+
+    context_support_count = max(
+        purpose_support_count,
+        semantic_context_count,
+    )
+
+    coverage = min(
+        1.0,
+        context_support_count / 3.0,
+    )
+
+    strong_coverage_count = max(
+        strong_purpose_count,
+        strong_semantic_count,
+    )
+
+    strong_coverage = min(
+        1.0,
+        strong_coverage_count / 2.0,
+    )
+
+    source_diversity = len({
+        str(item.get("source", "")).strip()
+        for item in evidence
+        if str(item.get("source", "")).strip()
+    })
+
+    source_factor = min(1.0, source_diversity / 3.0)
+
+    average_evidence_quality = sum(
+        max(
+            0.0,
+            min(
+                1.0,
+                _safe_float(item.get("evidence_quality"), 0.0),
+            ),
+        )
+        for item in evidence
+    ) / max(evidence_count, 1)
+
+    domain_evidence_count = sum(
+        1
+        for item in evidence
+        if item.get("supported_domains")
+    )
+
+    domain_coverage = min(
+        1.0,
+        domain_evidence_count / max(evidence_count, 1),
+    )
+
+    # ---------------------------------------------------------
+    # GRADED SCORE
+    # ---------------------------------------------------------
+    # Product context is important, but evidence must earn the score.
+    score = 0.08
+
+    if plausibility["status"] == "COHERENT":
+        score += 0.12
+    else:
+        score += 0.04
+
+    score += 0.36 * purpose_alignment
+    score += 0.10 * product_type_alignment
+    score += 0.04 * jurisdiction_alignment
+    score += 0.14 * semantic_context_signal
+    score += 0.10 * evidence_quality
+    score += 0.06 * average_evidence_quality
+    score += 0.05 * coverage
+    score += 0.04 * strong_coverage
+    score += 0.04 * source_factor
+    score += 0.05 * domain_coverage
+
+    # Ingredient evidence contributes only when it is accompanied by
+    # contextual evidence. It is never a confidence driver by itself.
+    if ingredient_match and not ingredient_only:
+        score += 0.02
+
+    strong_context = bool(strong_context_candidates)
+    multiple_sources = source_diversity >= 2
+    multiple_strong_items = (
+        len(strong_context_candidates) >= 2
+        or strong_coverage_count >= 2
+    )
+
+    authoritative_evidence_pattern = bool(
+        strong_context
+        and domain_evidence
+        and multiple_sources
+        and (
+            average_evidence_quality >= 0.60
+            or evidence_quality >= 0.70
+        )
+    )
+
+    if authoritative_evidence_pattern:
+        score += 0.08
+
+    if (
+        strong_context
+        and multiple_sources
+        and multiple_strong_items
+        and domain_evidence
+        and purpose_alignment >= 0.50
+    ):
+        score += 0.05
+
+    # ---------------------------------------------------------
+    # CONFIDENCE POLICY
+    # ---------------------------------------------------------
+    # IMPORTANT:
+    # Do not force uncertain evidence to an arbitrary 25% score.
+    # The score must come from the evidence signals above.
+    #
+    # Weak/insufficient evidence is communicated through the status
+    # and message rather than by hard-capping every contextual miss.
+    #
+    # Ingredient-only evidence is still restricted because an ingredient
+    # match alone cannot establish the user's stated purpose.
+    if ingredient_only:
+        score = min(score, 0.39)
+
+    if validation_status == "PARTIAL":
+        score = min(score, 0.72)
+
+    if validation_status == "UNSUPPORTED":
+        score = min(score, 0.30)
+
+    if plausibility["status"] == "PLAUSIBILITY_WARNING":
+        score -= 0.15
+
+    # ---------------------------------------------------------
+    # TWO-STAGE RELEVANCE GATE
+    # ---------------------------------------------------------
+    # Stage 1: Is the input even part of the Ayurveda/AYUSH/TK/IP
+    # ecosystem?  If not, confidence is exactly 0%.
+    ecosystem_relevant, ecosystem_reason = _ayurveda_ecosystem_relevance(
+        product,
+        validation,
+    )
+
+    # Stage 2: If it is in the ecosystem, does the retrieved evidence
+    # actually support the stated product/purpose?  Retrieval/source/domain
+    # signals alone must not manufacture confidence.
+    no_relevant_context = not context_candidates
+
+    if not ecosystem_relevant:
+        score = 0.0
+        no_relevant_context = True
+        relevance_status = "OUT_OF_SCOPE"
+    elif no_relevant_context:
+        score = 0.0
+        relevance_status = "NO_RELEVANT_EVIDENCE"
+    else:
+        score = max(0.0, min(0.95, score))
+        relevance_status = "RELEVANT"
+
+    # Ingredient count/overlap is a supporting signal only.  Multiple
+    # ingredients increase confidence only when they occur together with
+    # meaningful contextual evidence; they cannot rescue an unrelated
+    # product or purpose.
+    matching_ingredient_count = len(
+        strongest.get("ingredient_matches") or []
+    )
+    if (
+        ecosystem_relevant
+        and not no_relevant_context
+        and matching_ingredient_count >= 2
+        and purpose_alignment >= 0.50
+    ):
+        score += min(0.05, 0.015 * matching_ingredient_count)
+        score = min(0.95, score)
+
+    # High confidence is intentionally difficult to earn.
+    # 90%+ requires strong contextual support and is never produced
+    # from ingredient similarity alone.
+    #
+    # A directly matched therapeutic/TK context can legitimately enter
+    # the 90s even when the corpus has only one authoritative source.
+    # The direct-context signal has already required ingredient +
+    # therapeutic-purpose + contextual evidence, so this is not an
+    # ingredient-only shortcut.
+    # DIRECT AUTHORITATIVE CONTEXT ROUTE
+    #
+    # A strong TK/Ayurveda evidence item does not need an arbitrary
+    # evidence_quality >= 0.70 threshold to reach HIGH confidence.
+    # The evidence-quality score is a retrieval-quality heuristic, not
+    # the same thing as contextual correctness.  For a direct case such
+    # as "Zingiber zerumbet + traditional use + inflammation", the
+    # combination of ingredient, therapeutic purpose, product type and
+    # supported domain is the decisive signal.
+    # CORPUS-GROUNDED DIRECT SUPPORT
+    # Do not depend exclusively on the retriever's ingredient_matches
+    # metadata.  The actual evidence text is authoritative for determining
+    # whether the corpus explicitly connects the user's ingredient/product
+    # with the stated purpose.
+    product_name_text = str(
+        getattr(product, "product_name", "") or ""
+    ).strip().lower()
+    purpose_text = str(
+        getattr(product, "purpose", "") or ""
+    ).strip().lower()
+    ingredient_texts = [
+        str(x).strip().lower()
+        for x in (getattr(product, "ingredients", None) or [])
+        if str(x).strip()
+    ]
+    strongest_evidence_text = str(
+        strongest.get("text", "")
+        or strongest.get("evidence_text", "")
+        or ""
+    ).lower()
+
+    # Explicit corpus relationship:
+    # - at least one user ingredient/product term appears in the evidence,
+    # - the evidence contains meaningful purpose terminology,
+    # - the existing contextual alignment is already strong,
+    # - the evidence belongs to a supported domain.
+    corpus_ingredient_match = bool(
+        strongest_evidence_text
+        and (
+            any(term in strongest_evidence_text for term in ingredient_texts)
+            or (
+                product_name_text
+                and any(
+                    token in strongest_evidence_text
+                    for token in re.findall(r"[a-z0-9][a-z0-9 .-]{2,}", product_name_text)
+                    if token.strip()
+                )
+            )
+        )
+    )
+
+    purpose_terms = {
+        token for token in re.findall(r"[a-z0-9]+", purpose_text)
+        if len(token) >= 4
+        and token not in {
+            "traditional", "traditionally", "preparation", "preparations",
+            "preparation", "use", "used", "documented", "therapeutic",
+        }
+    }
+    corpus_purpose_match = bool(
+        purpose_terms
+        and sum(
+            1
+            for token in purpose_terms
+            if token in strongest_evidence_text
+        ) >= max(1, min(2, len(purpose_terms)))
+    )
+
+    direct_corpus_support = (
+        ecosystem_relevant
+        and not no_relevant_context
+        and not ingredient_only
+        and bool(strong_context_candidates)
+        and domain_evidence
+        and corpus_ingredient_match
+        and (
+            ingredient_match
+            or corpus_ingredient_match
+        )
+        and (
+            purpose_alignment >= 0.80
+            or (
+                corpus_purpose_match
+                and purpose_alignment >= 0.65
+            )
+        )
+        and product_type_alignment >= 0.40
+    )
+
+    direct_authoritative_context = direct_corpus_support
+
+    if direct_authoritative_context:
+        # The corpus directly supports the requested relationship.
+        # Allow the calibrated high-confidence band; do not require an
+        # arbitrary retrieval-quality threshold such as evidence_quality>=.70.
+        score = max(score, 0.90)
+        relevance_status = "DIRECT_CORPUS_SUPPORT"
+
+    if not ecosystem_relevant:
+        level = "OUT_OF_SCOPE"
+    elif no_relevant_context:
+        level = "NO_RELEVANT_EVIDENCE"
+    elif score >= 0.90 and strong_context and not ingredient_only:
+        level = "VERY_HIGH"
+    elif score >= 0.80:
+        level = "HIGH"
+    elif score >= 0.70:
+        level = "MEDIUM-HIGH"
+    elif score >= 0.60:
+        level = "MEDIUM"
+    elif score >= 0.45:
+        level = "LOW-MEDIUM"
+    else:
         level = "LOW"
-        score = 0.45
+
+    if not ecosystem_relevant:
+        confidence_status = "OUT_OF_SCOPE"
+    elif no_relevant_context:
+        confidence_status = "NO_RELEVANT_EVIDENCE"
+    elif ingredient_only:
+        confidence_status = "INGREDIENT_ONLY"
+    elif plausibility["status"] == "PLAUSIBILITY_WARNING":
+        confidence_status = "PLAUSIBILITY_WARNING"
+    else:
+        confidence_status = "CONTEXT_SUPPORTED"
 
     basis = []
 
-    if strongest.get(
-        "domain"
-    ) in supported_domains:
-
+    if direct_authoritative_context:
         basis.append(
-            "domain-specific textual evidence"
+            "DIRECT_CORPUS_SUPPORT: the retrieved corpus directly/near-directly "
+            "connects the user's product/ingredient and stated purpose."
         )
 
-    if ingredient_match:
-
+    if not ecosystem_relevant:
+        basis.append(ecosystem_reason)
         basis.append(
-            "ingredient evidence"
+            "Confidence is 0% because the input is outside the Ayurveda/AYUSH/TK/IP scope."
+        )
+    else:
+        basis.append(ecosystem_reason)
+
+    if plausibility["status"] == "COHERENT":
+        basis.append("product-context coherence")
+    else:
+        basis.append("product-context plausibility warning")
+
+    if domain_evidence:
+        basis.append("domain-specific textual evidence")
+
+    if purpose_alignment >= 0.75:
+        basis.append("strong stated-purpose alignment")
+    elif purpose_alignment >= 0.50:
+        basis.append("stated-purpose alignment")
+    elif semantic_context_signal >= 0.70 and not ingredient_only:
+        basis.append("strong semantic context alignment")
+    else:
+        basis.append("limited direct purpose alignment")
+
+    if product_type_alignment >= 0.50:
+        basis.append("product-type alignment")
+
+    if jurisdiction_alignment:
+        basis.append("jurisdiction alignment")
+
+    if evidence_quality >= 0.60:
+        basis.append("strong evidence quality")
+    elif evidence_quality >= 0.40:
+        basis.append("moderate evidence quality")
+
+    if coverage >= 0.67:
+        basis.append("multiple context-supported evidence items")
+
+    if source_diversity >= 2:
+        basis.append("source diversity")
+
+    if authoritative_evidence_pattern:
+        basis.append("multiple authoritative-quality evidence signals")
+
+    if ingredient_match:
+        basis.append("ingredient evidence (supporting only)")
+
+    if ingredient_only:
+        basis.append(
+            "ingredient match did not establish the stated purpose"
         )
 
     if similarity is not None:
+        basis.append("semantic retrieval")
 
-        basis.append(
-            "semantic retrieval"
+    if strongest.get("matched_terms"):
+        basis.append("keyword overlap")
+
+    if validation_status == "PARTIAL":
+        basis.append("partial domain coverage")
+
+    if confidence_status == "NO_RELEVANT_EVIDENCE":
+        evidence_status = "NO_RELEVANT_EVIDENCE"
+        confidence_message = (
+            "No sufficiently relevant evidence was found for the stated "
+            "product context or purpose. The retrieved material was not "
+            "treated as support, so confidence is 0%. Verify the original "
+            "authoritative sources before relying on this assessment."
         )
-
-    if strongest.get(
-        "matched_terms"
-    ):
-
-        basis.append(
-            "keyword overlap"
+    elif confidence_status == "INGREDIENT_ONLY":
+        evidence_status = "LIMITED_EVIDENCE"
+        confidence_message = (
+            "The evidence contains ingredient-level support, but ingredient "
+            "matching alone does not establish the stated product purpose."
         )
-
-    if validation.get(
-        "status"
-    ) == "PARTIAL":
-
-        basis.append(
-            "partial domain coverage"
+    elif confidence_status == "PLAUSIBILITY_WARNING":
+        evidence_status = "VERIFY_REQUIRED"
+        confidence_message = (
+            "Relevant evidence was retrieved, but the stated product "
+            "context contains a plausibility/classification warning that "
+            "should be verified."
+        )
+    elif score >= 0.90:
+        evidence_status = "VERY_STRONG_EVIDENCE"
+        confidence_message = (
+            "Strong, directly relevant evidence with multiple supporting "
+            "signals was retrieved."
+        )
+    elif score >= 0.70:
+        evidence_status = "GOOD_EVIDENCE"
+        confidence_message = (
+            "Relevant contextual evidence was retrieved, with remaining "
+            "verification needs."
+        )
+    elif score >= 0.45:
+        evidence_status = "LIMITED_EVIDENCE"
+        confidence_message = (
+            "Some relevant evidence was retrieved, but important gaps "
+            "remain."
+        )
+    else:
+        evidence_status = "INSUFFICIENT_EVIDENCE"
+        confidence_message = (
+            "The available evidence is too weak or indirect to support "
+            "the requested assessment confidently."
         )
 
     return {
-
-        "level":
-            level,
-
-        "score":
-            score,
-
-        "label":
-            f"{level} Confidence",
-
-        "meaning":
-            (
-                "High confidence: Retrieved evidence directly supports claims."
-                if level == "HIGH"
-                else "Medium confidence: Evidence retrieved with partial coverage."
-                if level == "MEDIUM"
-                else "Low confidence: Material requires manual verification."
-            ),
-
-        "basis":
-            basis,
-
-        "supported_domains":
-            supported_domains,
-
-        "warning":
-            (
-                "This is retrieval/evidence confidence, "
-                "not legal certainty."
-            )
+        "level": level,
+        "score": round(score, 2),
+        "status": confidence_status,
+        "evidence_status": evidence_status,
+        "confidence_message": confidence_message,
+        "basis": basis,
+        "supported_domains": supported_domains,
+        "context_alignment": {
+            "purpose_alignment": round(purpose_alignment, 3),
+            "product_type_alignment": round(product_type_alignment, 3),
+            "jurisdiction_alignment": round(jurisdiction_alignment, 3),
+            "semantic_context_signal": round(semantic_context_signal, 3),
+            "ingredient_only": ingredient_only,
+        },
+        "context_coherence": plausibility,
+        "evidence_coverage": {
+            "evidence_count": evidence_count,
+            "purpose_support_count": purpose_support_count,
+            "strong_purpose_count": strong_purpose_count,
+            "semantic_context_count": semantic_context_count,
+            "strong_semantic_count": strong_semantic_count,
+            "source_diversity": source_diversity,
+            "domain_evidence_count": domain_evidence_count,
+        },
+        "confidence_interpretation": interpretation,
+        "warning": warning,
+        "message": (
+            "Confidence reflects the strength, coverage and contextual "
+            "alignment of retrieved evidence. It is not legal certainty."
+        ),
     }
-
 
 # =========================================================
 # ACTION PLAN
@@ -3700,9 +4971,6 @@ def sanitize_evidence(
 
     for item in evidence:
 
-        source_name = item.get("source", "Unknown source")
-        url_val = item.get("url") or get_document_url(item) or None
-
         output.append({
 
             "id":
@@ -3710,22 +4978,15 @@ def sanitize_evidence(
                     "id"
                 ),
 
-            "title":
-                source_name,
-
             "domain":
                 item.get(
                     "domain"
                 ),
 
             "source":
-                source_name,
-
-            "source_url":
-                url_val or "#",
-
-            "url":
-                url_val,
+                item.get(
+                    "source"
+                ),
 
             "page":
                 item.get(
@@ -3773,6 +5034,12 @@ def sanitize_evidence(
                 item.get(
                     "ingredient_matches",
                     []
+                ),
+
+            "ingredient_evidence_is_supporting_only":
+                item.get(
+                    "ingredient_evidence_is_supporting_only",
+                    bool(item.get("ingredient_matches"))
                 ),
 
             "domain_matches":
@@ -6057,7 +7324,11 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
     # ---------------------------------------------------
     llm_result = generate_llm_reasoning(pseudo_product, domains, combined_evidence, validation)
 
-    confidence = calculate_confidence(combined_evidence, validation)
+    confidence = calculate_confidence(
+        combined_evidence,
+        validation,
+        product=pseudo_product
+    )
     sources = build_source_records(combined_evidence)
     missing_information = identify_missing_information(
         pseudo_product, domains, validation, combined_evidence
@@ -6248,13 +7519,70 @@ def analyze_product(
     )
 
     # -----------------------------------------------------
+    # PRODUCT CONTEXT ENGINE
+    # -----------------------------------------------------
+    # Additive only. Existing classification and routing remain.
+
+    product_context = None
+    contextual_queries = []
+    query = ""
+
+    if PRODUCT_CONTEXT_ENGINE_AVAILABLE:
+        try:
+            product_context = analyze_product_context(
+                product_name=product.product_name,
+                ingredients=product.ingredients,
+                purpose=product.purpose,
+                product_type=product.product_type,
+                jurisdiction=product.jurisdiction,
+                traditional_knowledge=product.based_on_traditional_knowledge,
+            )
+
+            contextual_queries = build_contextual_queries(
+                product_context
+            ) or []
+
+            requires_clarification = bool(
+                _context_value(
+                    product_context,
+                    "requires_clarification",
+                    False,
+                )
+            )
+
+            # For clear contexts, use the engine-generated query.
+            # Ambiguous inputs keep the old query behavior for now.
+            if not requires_clarification:
+                for contextual_query in contextual_queries:
+                    contextual_query = str(contextual_query or "").strip()
+                    if contextual_query:
+                        query = contextual_query[:MAX_QUERY_LENGTH]
+                        break
+
+            logger.info(
+                "Product Context Engine: confidence=%s clarification=%s",
+                _context_value(product_context, "context_confidence", None),
+                requires_clarification,
+            )
+
+        except Exception as e:
+            # Context layer must never break the existing RAG pipeline.
+            logger.exception(
+                "Product Context Engine failed; using existing query: %r",
+                e,
+            )
+            product_context = None
+            contextual_queries = []
+
+    # -----------------------------------------------------
     # SEARCH QUERY
     # -----------------------------------------------------
 
-    query = build_search_query(
-        product,
-        domains
-    )
+    if not query:
+        query = build_search_query(
+            product,
+            domains
+        )
 
     # -----------------------------------------------------
     # EVIDENCE RETRIEVAL
@@ -6268,7 +7596,10 @@ def analyze_product(
 
         ingredients=product.ingredients,
 
-        top_k=TOP_K
+        top_k=TOP_K,
+
+        # Existing unified retriever already accepts full product context.
+        product=product,
     )
 
     logger.info(
@@ -6373,8 +7704,9 @@ def analyze_product(
     # -----------------------------------------------------
 
     confidence = calculate_confidence(
-        evidence,
-        validation
+        evidence_for_reasoning,
+        validation_for_reasoning,
+        product=product
     )
 
     # -----------------------------------------------------
@@ -6573,14 +7905,41 @@ def analyze_product(
         else {}
     )
 
-    answer_text = (
-        ai_assessment.get("summary")
-        or ai_assessment.get("evidence_interpretation")
-        or reasoning.get("summary")
-        or "Assessment completed based on retrieved evidence."
-    ) if isinstance(ai_assessment, dict) else reasoning.get("summary", "Assessment completed based on retrieved evidence.")
-    
-    reasoning["answer"] = answer_text
+    # ---------------------------------------------------------
+    # CONTEXT-MISMATCH USER MESSAGE
+    # ---------------------------------------------------------
+    # Never let the LLM turn ingredient-only evidence into a
+    # product-purpose conclusion. If the deterministic confidence
+    # layer identifies a context mismatch, override the narrative
+    # assessment with a transparent abstention message.
+    if confidence.get("status") == "CONTEXT_MISMATCH":
+        mismatch_message = confidence.get(
+            "message",
+            "Retrieved evidence does not align with the user's stated purpose."
+        )
+
+        ai_assessment = {
+            "summary": mismatch_message,
+            "domain_analysis": {
+                "IP": "Insufficient evidence for the stated product context.",
+                "TK": "Insufficient evidence for the stated product context.",
+                "ABS": "Insufficient evidence for the stated product context.",
+            },
+            "evidence_interpretation": (
+                "An ingredient match may explain why a document was retrieved, "
+                "but ingredient similarity is not evidence that the user's "
+                "product has the use or effect described in that document."
+            ),
+            "risks": [
+                "Do not treat unrelated ingredient evidence as evidence of the product's purpose."
+            ],
+            "recommended_verification": [
+                "Review evidence that directly matches the stated product purpose, product type, and jurisdiction."
+            ],
+            "limitations": (
+                "The current evidence does not establish the stated product-purpose relationship."
+            ),
+        }
 
     recommended_verification = []
 
@@ -6608,6 +7967,11 @@ def analyze_product(
     # -----------------------------------------------------
 
     return {
+        "product_context_engine": {
+            "available": PRODUCT_CONTEXT_ENGINE_AVAILABLE,
+            "context": _context_to_dict(product_context),
+            "contextual_queries": contextual_queries,
+        },
 
         "app_version":
             APP_VERSION,
@@ -6640,6 +8004,21 @@ def analyze_product(
 
         "confidence":
             confidence,
+
+        # Explicit final-assessment state for the frontend.
+        # This prevents a generic LOW percentage from hiding a
+        # product/evidence context mismatch.
+        "assessment_status":
+            confidence.get(
+                "status",
+                "UNKNOWN"
+            ),
+
+        "assessment_message":
+            confidence.get(
+                "message",
+                ""
+            ),
 
         "action_plan":
             action_plan,

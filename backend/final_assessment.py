@@ -37,8 +37,7 @@ import streamlit as st
 # CONFIG
 # =========================================================
 
-import os
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8001")
+BACKEND_URL = "http://127.0.0.1:8000"
 ANALYZE_URL = f"{BACKEND_URL}/api/analyze"
 
 st.set_page_config(
@@ -148,6 +147,19 @@ def domain_status(result):
     unsupported = validation.get("unsupported_domains", [])
 
     return supported, unsupported
+
+
+def format_confidence_score(value):
+    """Display backend confidence as a readable percentage."""
+    if value is None:
+        return "N/A"
+    try:
+        numeric = float(value)
+        if numeric <= 1.0:
+            numeric *= 100.0
+        return f"{numeric:.0f}%"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def safe_get(data, *keys, default=None):
@@ -409,11 +421,11 @@ if result:
     with c4:
         st.metric(
             "Confidence",
-            str(
-                confidence.get(
-                    "level",
-                    "N/A",
-                )
+            format_confidence_score(
+                confidence.get("score")
+            ),
+            delta=str(
+                confidence.get("level", "N/A")
             ).upper(),
         )
 
@@ -609,6 +621,25 @@ if result:
                         ),
                     )
 
+                if item.get("ingredient_evidence_is_supporting_only"):
+                    st.caption(
+                        "Ingredient match is a supporting retrieval signal, "
+                        "not proof of the final conclusion."
+                    )
+
+                context_alignment = item.get(
+                    "context_alignment",
+                    {}
+                )
+                if isinstance(context_alignment, dict) and context_alignment:
+                    st.write("**Context alignment:**")
+                    for key, value in context_alignment.items():
+                        if isinstance(value, (int, float)):
+                            st.write(
+                                f"• {key.replace('_', ' ').title()}: "
+                                f"{float(value) * 100:.0f}%"
+                            )
+
                 st.write(
                     item.get(
                         "text",
@@ -622,58 +653,59 @@ if result:
 
     st.markdown("### Confidence")
 
-    confidence_level = confidence.get(
-        "level",
-        "UNKNOWN",
-    )
+    confidence_level = str(
+        confidence.get("level", "UNKNOWN")
+    ).upper()
 
-    confidence_score = confidence.get(
-        "score",
-        None,
-    )
+    confidence_score = confidence.get("score")
+    confidence_status = confidence.get("status")
 
-    if confidence_level.upper() == "HIGH":
-        st.success(
-            f"Confidence: {confidence_level}"
-            + (
-                f" ({confidence_score})"
-                if confidence_score is not None
-                else ""
-            )
-        )
-    elif confidence_level.upper() == "MEDIUM":
-        st.warning(
-            f"Confidence: {confidence_level}"
-            + (
-                f" ({confidence_score})"
-                if confidence_score is not None
-                else ""
-            )
-        )
+    display_score = format_confidence_score(confidence_score)
+
+    if confidence_level == "HIGH":
+        st.success(f"Confidence: {display_score} — {confidence_level}")
+    elif confidence_level == "MEDIUM":
+        st.warning(f"Confidence: {display_score} — {confidence_level}")
     else:
-        st.error(
-            f"Confidence: {confidence_level}"
-            + (
-                f" ({confidence_score})"
-                if confidence_score is not None
-                else ""
-            )
-        )
+        st.info(f"Confidence: {display_score} — {confidence_level}")
 
-    basis = confidence.get(
-        "basis",
-        [],
-    )
+    if confidence_status:
+        st.caption(f"Confidence status: {confidence_status}")
+
+    basis = confidence.get("basis", [])
 
     if basis:
         st.write("**Confidence basis:**")
         for item in basis:
             st.write(f"• {item}")
 
+    # Show context signals when the backend provides them.
+    context = (
+        confidence.get("context_alignment")
+        or confidence.get("context")
+        or {}
+    )
+    if isinstance(context, dict) and context:
+        st.write("**Context alignment:**")
+        for key, value in context.items():
+            if isinstance(value, (int, float)):
+                st.write(
+                    f"• {key.replace('_', ' ').title()}: "
+                    f"{float(value) * 100:.0f}%"
+                )
+            else:
+                st.write(
+                    f"• {key.replace('_', ' ').title()}: {value}"
+                )
+
     if confidence.get("warning"):
-        st.caption(
-            confidence["warning"]
-        )
+        st.caption(confidence["warning"])
+
+    st.caption(
+        "Confidence represents the strength of the overall "
+        "evidence-backed assessment. Retrieval similarity alone "
+        "must not be treated as final confidence."
+    )
 
     # -----------------------------------------------------
     # ACTION PLAN

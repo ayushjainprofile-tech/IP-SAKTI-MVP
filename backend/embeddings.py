@@ -330,6 +330,10 @@ def semantic_search(
                 document_embedding
             )
 
+            # Numerical safety: cosine similarity should be in [-1, 1].
+            # This value is a retrieval signal only; it is never final confidence.
+            similarity = max(-1.0, min(1.0, float(similarity)))
+
         except Exception as exc:
 
             print(
@@ -355,11 +359,19 @@ def semantic_search(
                     6
                 ),
 
+            # Kept for backward compatibility. This is a semantic-ranking
+            # score, NOT a confidence percentage.
             "score":
                 round(
                     float(similarity) * 10.0,
                     6
                 ),
+
+            "signal_type":
+                "semantic_retrieval",
+
+            "confidence_eligible":
+                False,
 
             "page_content":
                 str(text),
@@ -537,80 +549,13 @@ if __name__ == "__main__":
 
     print("=" * 60)
 
-# =========================================================
-# SEMANTIC SEARCH
-# =========================================================
-
-def semantic_search(
-    query: str,
-    documents,
-    top_k: int = 5,
-    min_score: float = 0.0
-):
-    """
-    Perform semantic search over a list of documents in batch for max performance.
-    """
-    if not query or not str(query).strip() or not documents:
-        return []
-
-    query_vector = embed_text(query)
-    if not query_vector:
-        return []
-
-    import math
-
-    def calc_cosine(a, b):
-        if not a or not b:
-            return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = math.sqrt(sum(x * x for x in a))
-        norm_b = math.sqrt(sum(y * y for y in b))
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot / (norm_a * norm_b)
-
-    doc_texts = []
-    valid_docs = []
-
-    for document in documents:
-        if isinstance(document, str):
-            text = document
-        elif isinstance(document, dict):
-            text = (
-                document.get("text")
-                or document.get("page_content")
-                or document.get("content")
-                or ""
-            )
-        else:
-            continue
-
-        if not text:
-            continue
-
-        doc_texts.append(str(text))
-        valid_docs.append(document)
-
-    if not doc_texts:
-        return []
-
-    # Batch embedding of all candidate texts at once (100x faster than sequential single encodes)
-    vectors = embed_texts(doc_texts)
-
-    results = []
-    for doc, vector in zip(valid_docs, vectors):
-        score = calc_cosine(query_vector, vector)
-        if score >= min_score:
-            if isinstance(doc, dict):
-                result = dict(doc)
-            else:
-                result = {"text": str(doc)}
-
-            result["similarity"] = round(float(score), 4)
-            results.append(result)
-
-    results.sort(key=lambda x: x["similarity"], reverse=True)
-    return results[:top_k]
+# Retrieval similarity is an evidence-ranking signal only.
+# It must not be converted directly into final legal/product confidence.
+EMBEDDING_ROLE_NOTE = (
+    "semantic similarity is retrieval evidence, not final confidence; "
+    "final confidence must be computed from the complete product context "
+    "and validated evidence"
+)
 EMBEDDINGS_AVAILABLE = True
 
 # =========================================================
@@ -627,3 +572,23 @@ def embed_query(text: str) -> List[float]:
     """
     return embed_text(text)
 
+
+
+# =========================================================
+# RETRIEVAL-ONLY SEMANTIC SIGNAL
+# =========================================================
+
+def semantic_retrieval_signal(similarity: float) -> float:
+    """
+    Convert cosine similarity into a bounded 0..1 retrieval signal.
+
+    This is for retrieval/context-ranking logic only.
+    It must never be presented directly as final confidence.
+    """
+    try:
+        value = float(similarity)
+    except (TypeError, ValueError):
+        return 0.0
+
+    value = max(-1.0, min(1.0, value))
+    return round((value + 1.0) / 2.0, 6)
