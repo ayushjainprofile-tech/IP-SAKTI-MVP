@@ -204,18 +204,36 @@ class ProductContextEngine:
             return self._scientific_to_canonical[norm]
         return norm
 
-    def _find_ingredients(self, text: str, explicit: Sequence[str] | None) -> list[str]:
-        found: list[str] = []
-        if explicit:
-            found.extend(self.normalize_ingredient(x) for x in explicit if self._norm(x))
+    def _aliases_in(self, text: str) -> list[str]:
+        """Canonical ingredients whose name/alias/scientific name occurs in text."""
         norm_text = self._norm(text)
+        names = {**self._scientific_to_canonical, **self._alias_to_canonical}
+        found: list[str] = []
         # Longest aliases first prevents "tea" from firing before "green tea".
-        aliases = sorted(self._alias_to_canonical, key=len, reverse=True)
-        for alias in aliases:
+        for alias in sorted(names, key=len, reverse=True):
             if len(alias) < 3:
                 continue
             if re.search(rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])", norm_text):
-                found.append(self._alias_to_canonical[alias])
+                found.append(names[alias])
+        return found
+
+    def resolve_ingredients(self, ingredients: Sequence[str]) -> list[str]:
+        """Canonical names for user-entered ingredients ("Aloe vera gel" -> "aloe vera")."""
+        return self._find_ingredients("", ingredients)
+
+    def _find_ingredients(self, text: str, explicit: Sequence[str] | None) -> list[str]:
+        found: list[str] = []
+        for raw in explicit or []:
+            if not self._norm(raw):
+                continue
+            canonical = self.normalize_ingredient(raw)
+            if canonical in self.ontology:
+                found.append(canonical)
+                continue
+            # "Turmeric extract", "Aloe vera gel": the ingredient plus a form.
+            inner = self._aliases_in(raw)
+            found.extend(inner or [canonical])
+        found.extend(self._aliases_in(text))
         # Preserve order, remove duplicates.
         return list(dict.fromkeys(found))
 
@@ -296,6 +314,10 @@ class ProductContextEngine:
         if matching:
             return "RELEVANT", [
                 f"'{x}' is commonly used in {category} products." for x in matching
+            ] + [
+                f"Note: '{x}' is not a known {category} ingredient (known uses: "
+                f"{', '.join(self.ontology[x].get('common_product_contexts', []))})."
+                for x in mismatched
             ]
         return "IRRELEVANT", [
             f"'{x}' is not a known {category} ingredient (known uses: "
@@ -312,6 +334,14 @@ class ProductContextEngine:
         jurisdiction: str | None = None,
         traditional_knowledge: bool | None = None,
     ) -> ProductContext:
+        # The API sends the form answer as text ("Yes" / "No" / "Not sure").
+        if isinstance(traditional_knowledge, str):
+            answer = self._norm(traditional_knowledge)
+            traditional_knowledge = (
+                True if answer in {"yes", "true", "y", "1"}
+                else False if answer in {"no", "false", "n", "0"}
+                else None
+            )
         combined = " ".join(
             x for x in [product_name or "", purpose or "", product_type or ""]
             if x

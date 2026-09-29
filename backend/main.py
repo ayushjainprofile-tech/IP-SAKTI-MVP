@@ -1112,8 +1112,8 @@ def detect_domains(
     if ProductContextEngine is not None:
         try:
             engine = ProductContextEngine()
-            for name in product.ingredients:
-                record = engine.ontology.get(engine.normalize_ingredient(name))
+            for canonical in engine.resolve_ingredients(product.ingredients):
+                record = engine.ontology.get(canonical)
                 if not record or record.get("in_scope") is False:
                     continue
                 contexts = set(record.get("common_product_contexts", []))
