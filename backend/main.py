@@ -3002,6 +3002,18 @@ def collect_evidence_legal_references(
     return references
 
 
+def _legal_reference_supported(ref, evidence_refs, evidence_blob):
+    if ref in evidence_refs:
+        return True
+    words = ref.split()
+    if len(words) >= 2 and words[-1] == "act":
+        # The Act pattern also swallows the words before the name
+        # ("filing under the patents act"), so check only the name
+        # itself against the evidence text and document names.
+        return " ".join(words[-2:]) in evidence_blob
+    return False
+
+
 def sanitize_unsupported_legal_references(
     analysis,
     evidence
@@ -3023,6 +3035,19 @@ def sanitize_unsupported_legal_references(
     if not evidence_refs:
 
         evidence_refs = set()
+
+    evidence_blob = " ".join(
+        normalize_text(str(item.get("text", "")))
+        + " "
+        + normalize_text(re.sub(r"[_.]", " ", str(item.get("source", ""))))
+        for item in evidence
+    )
+
+    def has_unsupported(refs):
+        return any(
+            not _legal_reference_supported(ref, evidence_refs, evidence_blob)
+            for ref in refs
+        )
 
     text_fields = [
         "summary",
@@ -3048,11 +3073,7 @@ def sanitize_unsupported_legal_references(
             value
         )
 
-        unsupported = (
-            refs - evidence_refs
-        )
-
-        if unsupported:
+        if has_unsupported(refs):
 
             analysis[field] = (
                 "Insufficient evidence. "
@@ -3078,7 +3099,7 @@ def sanitize_unsupported_legal_references(
             risk
         )
 
-        if refs - evidence_refs:
+        if has_unsupported(refs):
 
             cleaned_risks.append(
                 "Insufficient evidence."
@@ -3111,7 +3132,7 @@ def sanitize_unsupported_legal_references(
             recommendation
         )
 
-        if refs - evidence_refs:
+        if has_unsupported(refs):
 
             cleaned_verification.append(
                 "Verify the applicable legal framework "
@@ -3134,6 +3155,73 @@ def sanitize_unsupported_legal_references(
 # =========================================================
 # LLM REASONING
 # =========================================================
+
+GROQ_API_BASE = "https://api.groq.com/openai/v1"
+GROQ_PREFERRED_MODELS = ("openai/gpt-oss-20b", "llama-3.3-70b-versatile")
+
+
+class GroqError(RuntimeError):
+    def __init__(self, code, detail):
+        super().__init__(f"Groq HTTP {code}: {detail}")
+        self.code = code
+        self.detail = detail
+
+
+def _groq_request(api_key, path, payload=None, timeout=30):
+    req = Request(
+        GROQ_API_BASE + path,
+        method="POST" if payload is not None else "GET",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            # Groq's Cloudflare rejects the default Python-urllib
+            # User-Agent with 403 (error code 1010).
+            "User-Agent": "ip-sakti-backend/1.0",
+        },
+    )
+    body = json.dumps(payload).encode("utf-8") if payload is not None else None
+    try:
+        with urlopen(req, data=body, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as e:
+        raise GroqError(e.code, e.read().decode("utf-8", "replace")[:300]) from e
+
+
+@lru_cache(maxsize=4)
+def _groq_fallback_model(api_key):
+    """Pick an active chat model when the configured one is gone."""
+    data = _groq_request(api_key, "/models", timeout=15).get("data", [])
+    ids = [m.get("id", "") for m in data if m.get("active", True)]
+    for preferred in GROQ_PREFERRED_MODELS:
+        if preferred in ids:
+            return preferred
+    chat_models = [
+        i for i in ids
+        if not any(x in i for x in ("whisper", "tts", "guard", "embed", "orpheus"))
+    ]
+    return chat_models[0] if chat_models else None
+
+
+def groq_chat_completion(api_key, messages, json_mode=False, temperature=0.2, timeout=30):
+    model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+    payload = {"model": model, "messages": messages, "temperature": temperature}
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    try:
+        res = _groq_request(api_key, "/chat/completions", payload, timeout)
+    except GroqError as e:
+        # 404 model_not_found / 400 model_decommissioned: retry once with
+        # a model Groq currently serves.
+        if not (e.code == 404 or (e.code == 400 and "model" in e.detail)):
+            raise
+        fallback = _groq_fallback_model(api_key)
+        if not fallback or fallback == model:
+            raise
+        logger.warning("Groq model %s unavailable (%s); using %s", model, e, fallback)
+        payload["model"] = fallback
+        res = _groq_request(api_key, "/chat/completions", payload, timeout)
+    return res["choices"][0]["message"]["content"]
+
 
 def generate_llm_reasoning(
     product,
@@ -3452,29 +3540,11 @@ Never convert retrieval signals into legal conclusions.
                 "summary": "Groq API Key not found. Please add GROQ_API_KEY in Render environment variables."
             })
 
-        req = Request(
-            "https://api.groq.com/openai/v1/chat/completions",
-            method="POST",
-            headers={
-                "Authorization": f"Bearer {groq_api_key}",
-                "Content-Type": "application/json",
-                # Groq's Cloudflare rejects the default Python-urllib
-                # User-Agent with 403 (error code 1010).
-                "User-Agent": "ip-sakti-backend/1.0",
-            }
+        content = groq_chat_completion(
+            groq_api_key,
+            [{"role": "user", "content": prompt}],
+            json_mode=True,
         )
-
-        data = {
-            "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
-            "messages": [{"role": "user", "content": prompt}],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.9
-        }
-
-        with urlopen(req, data=json.dumps(data).encode("utf-8"), timeout=30) as response:
-            res_body = response.read().decode("utf-8")
-            res_json = json.loads(res_body)
-            content = res_json["choices"][0]["message"]["content"]
 
         parsed = parse_json_object(
             content
@@ -7282,6 +7352,9 @@ class AgentChatRequest(BaseModel):
 
     language: str = Field(default="en", max_length=10)
 
+    # "expert" (default) or "friendly": simple, conversational wording.
+    mode: str = Field(default="expert", max_length=20)
+
     @field_validator("query", "jurisdiction")
     @classmethod
     def clean_text(cls, value):
@@ -7324,7 +7397,35 @@ def _build_chat_pseudo_product(query: str, jurisdiction: str) -> ProductInput:
     )
 
 
-def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en") -> Dict[str, Any]:
+def _friendly_chat_answer(api_key, query, answer, language):
+    """Re-explain a grounded answer in simple, conversational words."""
+    lang_name = {"hi": "Hindi", "mr": "Marathi"}.get(language)
+    lang_rule = (
+        f"Reply in {lang_name}."
+        if lang_name
+        else "Reply in the same language and style as the question "
+        "(Hinglish if the question is in Hinglish, otherwise English)."
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are IP-SAKTI's friendly helper. Rewrite the expert answer "
+                "for a non-expert: warm tone, short simple sentences, no legal "
+                "jargon (briefly explain any term you must keep), at most 6 short "
+                "sentences or bullet points, and end with one practical next step. "
+                "Use ONLY facts from the expert answer; never add laws, section "
+                "numbers, fees, deadlines or advice that are not in it. If the "
+                "expert answer says the evidence is insufficient, say so simply. "
+                + lang_rule
+            ),
+        },
+        {"role": "user", "content": f"Question: {query}\n\nExpert answer:\n{answer}"},
+    ]
+    return groq_chat_completion(api_key, messages, temperature=0.4, timeout=20).strip()
+
+
+def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en", mode: str = "expert") -> Dict[str, Any]:
 
     agent_trace: List[str] = ["Query intent identified"]
     tools_used: List[str] = []
@@ -7418,8 +7519,9 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
         parts = []
         if analysis.get("summary"):
             parts.append(str(analysis["summary"]))
-        if analysis.get("evidence_interpretation"):
-            parts.append(str(analysis["evidence_interpretation"]))
+        interpretation = str(analysis.get("evidence_interpretation") or "")
+        if interpretation and interpretation not in parts:
+            parts.append(interpretation)
         answer = "\n\n".join(parts).strip() or (
             "Insufficient evidence. I could not find grounded evidence "
             "to answer this question for the selected jurisdiction."
@@ -7439,8 +7541,20 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
             "are shown below for manual review."
         )
 
+    friendly_applied = False
+    if str(mode).lower() == "friendly" and llm_result.get("status") == "SUCCESS":
+        groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
+        if groq_api_key:
+            try:
+                answer = _friendly_chat_answer(groq_api_key, query, answer, language) or answer
+                friendly_applied = True
+                agent_trace.append("Answer simplified (friendly mode)")
+            except Exception as e:
+                logger.warning("Friendly rewrite failed; keeping expert answer: %r", e)
+
     return {
         "answer": answer,
+        "mode": "friendly" if friendly_applied else "expert",
         "sources": sources,
         "citations": sources,
         "confidence": confidence,
@@ -7470,11 +7584,17 @@ def agent_chat(request: AgentChatRequest):
             query=request.query,
             jurisdiction=request.jurisdiction,
             language=request.language,
+            mode=request.mode,
         )
 
         # Translate only the user-facing answer. Source titles, URLs,
-        # citations, and evidence text remain unchanged.
-        if request.language in {"hi", "mr"} and result.get("answer"):
+        # citations, and evidence text remain unchanged. Friendly answers
+        # are written directly in the requested language.
+        if (
+            request.language in {"hi", "mr"}
+            and result.get("answer")
+            and result.get("mode") != "friendly"
+        ):
             result["answer"] = translate_text(
                 result["answer"],
                 "en",

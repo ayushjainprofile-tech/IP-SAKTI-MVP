@@ -81,6 +81,8 @@ function Dashboard() {
     }
   ]);
   const [chatQuery, setChatQuery] = useState("");
+  // "expert": detailed legal wording; "friendly": simple, conversational.
+  const [chatMode, setChatMode] = useState("expert");
   const [chatLoading, setChatLoading] = useState(false);
   const [expandedTrace, setExpandedTrace] = useState({});
 
@@ -171,7 +173,8 @@ function Dashboard() {
           body: JSON.stringify({
             query: query,
             jurisdiction: form.jurisdiction || "India",
-            language: language
+            language: language,
+            mode: chatMode
           }),
           signal: controller.signal,
         });
@@ -202,6 +205,7 @@ function Dashboard() {
       content: chatData.answer || chatData.response || "No response received.",
       trace: chatData.agent_trace || chatData.trace || [],
       sources: chatData.sources || chatData.citations || [],
+      mode: chatData.mode,
       confidence: typeof chatData.confidence === "object" ? chatData.confidence?.level || "" : chatData.confidence
     };
 
@@ -585,7 +589,7 @@ function Dashboard() {
                 <div key={idx} className={`chat-bubble-container ${msg.role}`}>
                   <div className={`chat-bubble ${msg.role}`}>
                     <div className="chat-sender">
-                      {msg.role === "user" ? "👤 You" : "🤖 IP-SAKTI Agent"}
+                      {msg.role === "user" ? "👤 You" : msg.mode === "friendly" ? "😊 IP-SAKTI Helper" : "🤖 IP-SAKTI Agent"}
                     </div>
                     <div className="chat-content">{msg.content}</div>
 
@@ -646,6 +650,25 @@ function Dashboard() {
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="chat-mode-toggle" role="group" aria-label="Answer style">
+              <button
+                type="button"
+                className={chatMode === "expert" ? "active" : ""}
+                onClick={() => setChatMode("expert")}
+                disabled={chatLoading}
+              >
+                {language === "hi" ? "🎓 विशेषज्ञ" : language === "mr" ? "🎓 तज्ज्ञ" : "🎓 Expert"}
+              </button>
+              <button
+                type="button"
+                className={chatMode === "friendly" ? "active" : ""}
+                onClick={() => setChatMode("friendly")}
+                disabled={chatLoading}
+              >
+                {language === "hi" ? "😊 आसान भाषा" : language === "mr" ? "😊 सोपी भाषा" : "😊 Simple words"}
+              </button>
             </div>
 
             <form onSubmit={handleChatSubmit} className="chat-input-form">

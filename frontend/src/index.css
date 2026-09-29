@@ -694,6 +694,28 @@ li:last-child {
   color: var(--accent-rust);
 }
 
+.chat-mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.chat-mode-toggle button {
+  margin-top: 0;
+  background: transparent;
+  border: 1px solid #cbcdb2;
+  color: var(--text-muted);
+  box-shadow: none;
+  font-size: 12px;
+  padding: 8px 14px;
+}
+
+.chat-mode-toggle button.active {
+  background: var(--accent-rust);
+  border-color: var(--accent-rust);
+  color: #fff;
+}
+
 .chat-input-form {
   display: flex;
   gap: 10px;
