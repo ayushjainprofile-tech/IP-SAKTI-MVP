@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import LandingPage from "./LandingPage";
 import Navbar from "./components/Navbar";
+import { VoiceField, SpeakButton } from "./components/Voice";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 
@@ -319,23 +320,28 @@ function Dashboard() {
 
           <form onSubmit={analyze}>
             <label>{language === "hi" ? "उत्पाद का नाम" : language === "mr" ? "उत्पादनाचे नाव" : "Product name"}</label>
-            <input
+            <VoiceField
               value={form.product_name}
-              onChange={(e) => update("product_name", e.target.value)}
+              onValueChange={(v) => update("product_name", v)}
+              language={language}
               required
             />
 
             <label>{language === "hi" ? "सामग्री / घटक" : language === "mr" ? "घटक" : "Ingredients / components"}</label>
-            <input
+            <VoiceField
               value={form.ingredients}
-              onChange={(e) => update("ingredients", e.target.value)}
+              onValueChange={(v) => update("ingredients", v)}
+              language={language}
+              separator=", "
               placeholder="Comma separated"
             />
 
             <label>{language === "hi" ? "उद्देश्य / उपयोग" : language === "mr" ? "उद्देश / वापर" : "Intended use"}</label>
-            <textarea
+            <VoiceField
+              as="textarea"
               value={form.purpose}
-              onChange={(e) => update("purpose", e.target.value)}
+              onValueChange={(v) => update("purpose", v)}
+              language={language}
             />
 
             <label>{language === "hi" ? "उत्पाद का प्रकार" : language === "mr" ? "उत्पादनाचा प्रकार" : "Product type"}</label>
@@ -503,6 +509,14 @@ function Dashboard() {
                     <p><strong>Product Context Engine:</strong> {result.product_context_engine.context.relevance_reasons.map(toStr).join(" ")}</p>
                   )}
                   <p className="muted">{toStr(result.confidence?.warning || result.confidence?.meaning || "")}</p>
+                  <SpeakButton
+                    text={[
+                      `${Math.round((result.confidence?.score || 0) * 100)}%`,
+                      toStr(result.confidence?.level || ""),
+                      ...(result.product_context_engine?.context?.relevance_reasons || []).map(toStr),
+                    ].join(". ")}
+                    language={language}
+                  />
                 </div>
               </div>
 
@@ -558,6 +572,7 @@ function Dashboard() {
                   <div className="card-number">07</div>
                 </div>
                 <h3>Action Plan</h3>
+                <SpeakButton text={(result.action_plan || []).map(toStr).join(". ")} language={language} />
                 <ol>
                   {(result.action_plan || []).map((step, i) => (
                     <li key={i}>{toStr(step)}</li>
@@ -592,6 +607,9 @@ function Dashboard() {
                       {msg.role === "user" ? "👤 You" : msg.mode === "friendly" ? "😊 IP-SAKTI Helper" : "🤖 IP-SAKTI Agent"}
                     </div>
                     <div className="chat-content">{msg.content}</div>
+                    {msg.role === "assistant" && idx > 0 && (
+                      <SpeakButton text={msg.content} language={language} />
+                    )}
 
                     {/* Agent Execution Trace Expander */}
                     {msg.trace && msg.trace.length > 0 && (
@@ -672,10 +690,11 @@ function Dashboard() {
             </div>
 
             <form onSubmit={handleChatSubmit} className="chat-input-form">
-              <input
+              <VoiceField
                 type="text"
                 value={chatQuery}
-                onChange={(e) => setChatQuery(e.target.value)}
+                onValueChange={setChatQuery}
+                language={language}
                 placeholder={
                   language === "hi"
                     ? "IP-SAKTI AI से पूछें... (उदा. धारा 3(p) क्या है?)"
