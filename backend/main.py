@@ -5512,90 +5512,57 @@ def translate_text(
     target_lang="en"
 ):
     """
-    Translate a single string.
-
+    Translate a single string using Sarvam AI Translation API.
+    
     Failure-safe by design: the original text is returned when
-    Bhashini is unavailable, disabled, or returns no translation.
+    the translation fails or no key is provided.
     """
     if text is None:
         return ""
 
-    text = str(
-        text
-    )
+    text = str(text)
 
-    source_lang = normalize_language_code(
-        source_lang
-    )
+    source_lang = normalize_language_code(source_lang)
+    target_lang = normalize_language_code(target_lang)
 
-    target_lang = normalize_language_code(
-        target_lang
-    )
-
-    if (
-        not text.strip()
-        or source_lang == target_lang
-    ):
+    if not text.strip() or source_lang == target_lang:
         return text
 
-    # Generic Bhashini/ULCA pipeline payload.
+    api_key = os.getenv("SARVAM_API_KEY")
+    if not api_key:
+        logger.warning("SARVAM_API_KEY is not configured.")
+        return text
+
+    # Sarvam AI language codes typically expect the -IN suffix
+    sarvam_source = source_lang + "-IN" if "-" not in source_lang else source_lang
+    sarvam_target = target_lang + "-IN" if "-" not in target_lang else target_lang
+
+    url = "https://api.sarvam.ai/translate"
     payload = {
-        "pipelineTasks": [
-            {
-                "taskType": "translation",
-                "config": {
-                    "language": {
-                        "sourceLanguage":
-                            source_lang,
-                        "targetLanguage":
-                            target_lang
-                    },
-                    "serviceId":
-                        os.getenv(
-                            "BHASHINI_TRANSLATION_SERVICE_ID",
-                            ""
-                        )
-                }
-            }
-        ],
-        "inputData": {
-            "input": [
-                {
-                    "source":
-                        text
-                }
-            ]
-        }
+        "input": [text],
+        "source_language_code": sarvam_source,
+        "target_language_code": sarvam_target,
+        "speaker_gender": "Male",
+        "mode": "formal",
+        "model": "sarvam-translate"
+    }
+    headers = {
+        "api-subscription-key": api_key,
+        "Content-Type": "application/json"
     }
 
-    if BHASHINI_PIPELINE_ID:
-        payload[
-            "pipelineId"
-        ] = BHASHINI_PIPELINE_ID
-
     try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        translated_list = data.get("translated_text", [])
+        
+        if translated_list and isinstance(translated_list, list):
+            return translated_list[0]
 
-        response = _bhashini_request(
-            payload
-        )
-
-        translated = _extract_translation_text(
-            response
-        )
-
-        if translated:
-            return translated
-
-        logger.warning(
-            "Bhashini returned no translation."
-        )
-
+        logger.warning("Sarvam AI returned no translation.")
     except Exception as e:
-
-        logger.warning(
-            "Translation fallback: %r",
-            e
-        )
+        logger.warning("Sarvam AI fallback: %r", e)
 
     return text
 
@@ -6610,8 +6577,8 @@ def language_translate(
 
         "provider":
             (
-                "bhashini"
-                if BHASHINI_ENABLED
+                "sarvam_ai"
+                if os.getenv("SARVAM_API_KEY")
                 else "fallback"
             ),
 
@@ -6650,11 +6617,11 @@ def language_status():
     return {
 
         "enabled":
-            BHASHINI_ENABLED,
+            bool(os.getenv("SARVAM_API_KEY")),
 
         "provider":
-            "Bhashini"
-            if BHASHINI_ENABLED
+            "Sarvam AI"
+            if os.getenv("SARVAM_API_KEY")
             else "fallback",
 
         "supported_languages":
@@ -8727,8 +8694,8 @@ def analyze_product(
 
                 "language_service":
                     (
-                        "Bhashini"
-                        if BHASHINI_ENABLED
+                        "Sarvam AI"
+                        if os.getenv("SARVAM_API_KEY")
                         else "fallback"
                     ),
 
@@ -8802,8 +8769,8 @@ def root():
 
         "language_service":
             (
-                "Bhashini"
-                if BHASHINI_ENABLED
+                "Sarvam AI"
+                if os.getenv("SARVAM_API_KEY")
                 else "fallback"
             ),
 
