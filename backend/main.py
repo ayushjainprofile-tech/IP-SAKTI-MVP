@@ -4053,18 +4053,10 @@ def _ayurveda_ecosystem_relevance(product, validation=None):
     if any(term in ptype or term in name for term in explicit_unrelated):
         return False, "Product is explicitly outside the Ayurveda/AYUSH ecosystem."
 
-    # Explicit food is not automatically Ayurveda. Ayurveda-Aahar/AYUSH/
-    # medicinal/traditional context is required.
+    # Relaxing the food rejection: Food can be part of the TK/IP ecosystem
+    # even without explicit 'ayurveda' keywords, especially for general IP checks.
     if any(term in ptype for term in ("food", "snack", "beverage", "restaurant")):
-        food_relevance = (
-            "ayur-aahar" in combined
-            or "ayurveda" in combined
-            or "ayush" in combined
-            or "traditional medicinal" in combined
-            or "medicinal" in combined
-        )
-        if not food_relevance:
-            return False, "Food input has no Ayurveda/AYUSH/medicinal context."
+        pass
 
     positive_context = (
         "ayurveda", "ayurvedic", "ayush", "traditional knowledge",
@@ -4102,7 +4094,7 @@ def _ayurveda_ecosystem_relevance(product, validation=None):
         )
     )
 
-    if has_positive_context or (has_relevant_domain and medicinal_purpose):
+    if has_positive_context or (has_relevant_domain and medicinal_purpose) or "ip" in validation_domains:
         return True, "Product/query has meaningful Ayurveda/AYUSH/TK/IP relevance."
 
     return False, "No meaningful Ayurveda/AYUSH/TK/IP relationship was established."
@@ -4498,7 +4490,7 @@ def calculate_confidence(
         score = min(score, 0.72)
 
     if validation_status == "UNSUPPORTED":
-        score = 0.0
+        score = min(score, 0.30)
 
     if plausibility["status"] == "PLAUSIBILITY_WARNING":
         score = 0.0
@@ -7707,6 +7699,22 @@ def analyze_product(
         validation_for_reasoning,
         product=product
     )
+
+    # Product Context Engine has the final say on relevance:
+    # an ingredient that does not belong to the product category
+    # (e.g. chilli in a cosmetic) cannot earn evidence confidence.
+    if _context_value(product_context, "relevance_status") == "IRRELEVANT":
+        reasons = list(_context_value(product_context, "relevance_reasons", []) or [])
+        confidence.update({
+            "level": "OUT_OF_SCOPE",
+            "score": 0.0,
+            "status": "OUT_OF_SCOPE",
+            "label": "OUT_OF_SCOPE",
+            "meaning": "Product Context Engine: the ingredients do not fit this product category.",
+            "basis": reasons + [
+                "Confidence is 0% because the Product Context Engine found the product context irrelevant."
+            ] + list(confidence.get("basis", []) or []),
+        })
 
     # -----------------------------------------------------
     # SOURCES
