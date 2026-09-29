@@ -3940,12 +3940,11 @@ def _common_sense_context_check(product):
     is_topical_face = bool(
         purpose_tokens & topical_face_terms
         or type_tokens & {"cosmetic"}
-        and (
-            "face" in purpose_tokens
-            or "facial" in purpose_tokens
-            or "moisturizer" in purpose_tokens
-            or "moisturizing" in purpose_tokens
-        )
+        or "face" in purpose_tokens
+        or "facial" in purpose_tokens
+        or "moisturizer" in purpose_tokens
+        or "moisturizing" in purpose_tokens
+        or "cosmetic" in purpose_tokens
     )
     has_chilli = any(
         phrase_in_text(ingredients_text, term)
@@ -4499,10 +4498,10 @@ def calculate_confidence(
         score = min(score, 0.72)
 
     if validation_status == "UNSUPPORTED":
-        score = min(score, 0.30)
+        score = 0.0
 
     if plausibility["status"] == "PLAUSIBILITY_WARNING":
-        score -= 0.15
+        score = 0.0
 
     # ---------------------------------------------------------
     # TWO-STAGE RELEVANCE GATE
