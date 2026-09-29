@@ -52,63 +52,6 @@ function getDomainMetrics(result, domainCode) {
   return { width: "0%", label: "No evidence", color: "#8A6421" };
 }
 
-function generateLocalChatResponse(query, language = "en") {
-  const q = (query || "").toLowerCase();
-
-  let answer = "";
-  let sources = [];
-  let confidence = "HIGH (0.89)";
-  let trace = [
-    "Query intent identified",
-    "IP-SAKTI knowledge base searched (3 evidence item(s))",
-    "TK knowledge checked",
-    "ABS knowledge checked",
-    "Knowledge Graph consulted",
-    "Web search performed (2 validated source(s))",
-    "Evidence validated",
-    "Answer generated"
-  ];
-
-  if (q.includes("patent") || q.includes("section 3(p)") || q.includes("ip")) {
-    answer = language === "hi"
-      ? "भारतीय पेटेंट अधिनियम, 1970 की धारा 3(p) के तहत, पारंपरिक ज्ञान (TK) या पारंपरिक घटकों के ज्ञात गुणों का केवल एकत्रीकरण पेटेंट योग्य नहीं है। जब तक कि घटक नए और अप्रत्याशित सहक्रियात्मक प्रभाव (synergistic effect) प्रदर्शित न करें, दावा पेटेंट योग्य नहीं माना जाता।"
-      : language === "mr"
-      ? "भारतीय पेटंट कायदा, 1970 च्या कलम 3(p) अंतर्गत, पारंपारिक ज्ञान (TK) किंवा घटकांच्या ज्ञात गुणांचे केवळ एकत्रीकरण पेटंटयोग्य नाही. जोपर्यंत घटक नवीन आणि अनपेक्षित सहक्रियात्मक प्रभाव (synergistic effect) दाखवत नाहीत, तोपर्यंत दावा पेटंटयोग्य मानला जात नाही."
-      : "Under Section 3(p) of the Indian Patents Act 1970, an invention which in effect is traditional knowledge or an aggregation of known properties of traditionally known components is not patentable. Novel non-obvious synergistic data must be demonstrated for IP eligibility.";
-    sources = [
-      { title: "Indian Patents Act 1970 — Section 3(p)", url: "https://ipindia.gov.in" },
-      { title: "TKDL Prior Art Database Reference", url: "https://www.tkdl.res.in" }
-    ];
-  } else if (q.includes("abs") || q.includes("biodiversity") || q.includes("nba") || q.includes("access")) {
-    answer = language === "hi"
-      ? "जैविक विविधता अधिनियम, 2002 के तहत, भारत के जैविक संसाधनों या उससे संबंधित पारंपरिक ज्ञान का व्यावसायिक उपयोग करने से पहले राष्ट्रीय जैव विविधता प्राधिकरण (NBA) या राज्य जैव विविधता बोर्ड (SBB) से पूर्व अनुमति (ABS compliance) प्राप्त करना अनिवार्य है।"
-      : language === "mr"
-      ? "जैविक विविधता कायदा, 2002 अंतर्गत, भारतातील जैविक संसाधने किंवा त्यासंबंधीच्या पारंपारिक ज्ञानाचा व्यावसायिक वापर करण्यापूर्वी राष्ट्रीय जैवविविधता प्राधिकरणाची (NBA) पूर्व परवानगी (ABS compliance) घेणे अनिवार्य आहे."
-      : "Under the Biological Diversity Act, 2002, any commercial utilization or bio-survey of Indian biological resources and associated traditional knowledge mandates prior approval and Access & Benefit Sharing (ABS) compliance with National Biodiversity Authority (NBA).";
-    sources = [
-      { title: "National Biodiversity Authority (NBA) Guidelines", url: "https://nbaindia.org" },
-      { title: "Biological Diversity Act 2002 — Section 3 & 7", url: "https://nbaindia.org" }
-    ];
-  } else {
-    answer = language === "hi"
-      ? `IP-SAKTI AI आपके प्रश्न: "${query}" का विश्लेषण कर रहा है। पारंपरिक ज्ञान (TKDL), पेटेंट साक्ष्य और जैव विविधता दिशानिर्देशों के आधार पर: घटकों की नवीनता सिद्ध करना और NBA/SBB नियमों का पालन करना अनिवार्य है।`
-      : language === "mr"
-      ? `IP-SAKTI AI तुमच्या प्रश्नाचे: "${query}" विश्लेषण करत आहे. पारंपारिक ज्ञान (TKDL), पेटंट पुरावे आणि जैवविविधता मार्गदर्शक तत्त्वांनुसार: घटकांची नवीनता सिद्ध करणे आणि NBA नियमांचे पालन करणे आवश्यक आहे.`
-      : `Based on IP-SAKTI evidence retrieval for "${query}": Ensure traditional knowledge prior-art records in TKDL are checked, verify non-obvious synergistic efficacy under Section 3(p), and secure NBA approval if Indian biological resources are utilized.`;
-    sources = [
-      { title: "Traditional Knowledge Digital Library (TKDL)", url: "https://www.tkdl.res.in" },
-      { title: "Indian Patent Office Guidelines", url: "https://ipindia.gov.in" }
-    ];
-  }
-
-  return {
-    answer,
-    sources,
-    confidence,
-    agent_trace: trace
-  };
-}
-
 function Dashboard() {
   const [language, setLanguage] = useState("en"); // "en", "hi", "mr"
   const [form, setForm] = useState({
@@ -244,7 +187,14 @@ function Dashboard() {
     }
 
     if (!chatData) {
-      chatData = generateLocalChatResponse(query, language);
+      // Never invent an answer: every reply must come from the backend.
+      chatData = {
+        answer: language === "hi"
+          ? "सर्वर से संपर्क नहीं हो सका। कृपया एक मिनट बाद फिर से प्रयास करें।"
+          : language === "mr"
+          ? "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया एका मिनिटानंतर पुन्हा प्रयत्न करा."
+          : "Could not reach the IP-SAKTI server. Please try again in a minute.",
+      };
     }
 
     const botMsg = {
@@ -252,7 +202,7 @@ function Dashboard() {
       content: chatData.answer || chatData.response || "No response received.",
       trace: chatData.agent_trace || chatData.trace || [],
       sources: chatData.sources || chatData.citations || [],
-      confidence: typeof chatData.confidence === "object" ? chatData.confidence?.level || "HIGH" : chatData.confidence
+      confidence: typeof chatData.confidence === "object" ? chatData.confidence?.level || "" : chatData.confidence
     };
 
     setChatMessages((prev) => [...prev, botMsg]);

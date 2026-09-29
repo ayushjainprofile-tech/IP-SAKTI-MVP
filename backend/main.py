@@ -1128,41 +1128,6 @@ def detect_domains(
         except Exception as e:
             logger.warning("Ontology domain routing failed: %r", e)
 
-    # Known biological-resource ingredients
-    # are routing signals ONLY.
-    #
-    # They do NOT constitute ABS evidence.
-    ingredient_signals = {
-
-        "turmeric",
-        "curcuma",
-        "curcuma_longa",
-        "curcumin",
-        "aloe",
-        "aloe_vera",
-        "aloe_barbadensis"
-    }
-
-    ingredient_text = normalize_text(
-        " ".join(
-            product.ingredients
-        )
-    )
-
-    if any(
-        phrase_in_text(
-            ingredient_text,
-            signal
-        )
-        for signal in ingredient_signals
-    ):
-
-        if "ABS" not in domains:
-
-            domains.append(
-                "ABS"
-            )
-
     # IP is always a baseline
     # assessment domain.
     if "IP" not in domains:

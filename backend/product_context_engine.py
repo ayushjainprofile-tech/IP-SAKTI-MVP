@@ -27,20 +27,8 @@ DEFAULT_EXAMPLES_PATH = BASE_DIR / "data" / "product_context_examples.json"
 # English dictionary words + words seen in the TK/IP/ABS corpus.
 DEFAULT_VOCABULARY_PATH = BASE_DIR / "data" / "vocabulary.txt"
 
-# Common Ayurvedic / Hinglish product words that a dictionary will not know.
-INDIAN_PRODUCT_WORDS = {
-    "churna", "choorna", "vati", "bhasma", "kwath", "kadha", "arishta", "asava",
-    "taila", "tailam", "ghrita", "lepa", "lep", "rasayana", "guggulu", "avaleha",
-    "punarnava", "guduchi", "haritaki", "bibhitaki", "arjuna", "manjistha",
-    "shankhpushpi", "jatamansi", "kalonji", "ajwain", "jeera", "hing", "methi",
-    "kesar", "chandan", "kumkumadi", "ubtan", "besan", "haldi", "mirch", "adrak",
-    "lahsun", "pudina", "nimbu", "gulab", "mehendi", "mehndi", "reetha",
-    "shikakai", "kapoor", "kattha", "elaichi", "dalchini", "laung", "jaiphal",
-    "javitri", "saunf", "isabgol", "sabun", "tel", "twacha", "chehra", "dard",
-    "pet", "khansi", "bukhar", "dawa", "dawai", "jadi", "buti", "desi",
-    "gharelu", "nuskha", "masala", "achar", "chai", "sharbat", "ayurvedic",
-    "ayush", "siddha", "unani", "homeopathic",
-}
+# Ayurvedic / Hinglish product words a dictionary will not know.
+DEFAULT_INDIAN_WORDS_PATH = BASE_DIR / "data" / "indian_product_words.txt"
 
 
 PRODUCT_TAXONOMY = {
@@ -146,15 +134,15 @@ class ProductContext:
 
 @lru_cache(maxsize=1)
 def _load_vocabulary(path: str) -> frozenset[str]:
-    words = set(INDIAN_PRODUCT_WORDS)
+    words: set[str] = set()
     for pattern_words in (PRODUCT_TAXONOMY.values(), [FORM_PATTERNS]):
         for group in pattern_words:
             for phrase in group:
                 words.update(re.findall(r"[a-z]{3,}", phrase.lower()))
-    vocab_path = Path(path)
-    if vocab_path.exists():
-        with vocab_path.open("r", encoding="utf-8") as f:
-            words.update(line.strip() for line in f if line.strip())
+    for vocab_path in (Path(path), DEFAULT_INDIAN_WORDS_PATH):
+        if vocab_path.exists():
+            with vocab_path.open("r", encoding="utf-8") as f:
+                words.update(line.strip().lower() for line in f if line.strip())
     return frozenset(words)
 
 
