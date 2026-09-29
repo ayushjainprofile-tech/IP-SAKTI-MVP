@@ -8,12 +8,13 @@ import SignUp from "./pages/SignUp";
 import heroBgVideo from "./white-sheet-bg.mp4";
 
 const API_ENDPOINTS = [
+  import.meta.env.VITE_API_URL,
   "https://discolor-fretful-coronary.ngrok-free.dev",
   "http://localhost:8001",
   "http://127.0.0.1:8001",
   "http://localhost:8000",
   "http://127.0.0.1:8000",
-];
+].filter(Boolean);
 
 /* Safely convert any value to a renderable string */
 function toStr(val) {
