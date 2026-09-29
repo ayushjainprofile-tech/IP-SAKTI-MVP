@@ -26,12 +26,10 @@ try:
     from product_context_engine import (
         analyze_product_context,
         build_contextual_queries,
-        ProductContextEngine,
     )
     PRODUCT_CONTEXT_ENGINE_AVAILABLE = True
 except Exception as e:
     analyze_product_context = None
-    ProductContextEngine = None
     build_contextual_queries = None
     PRODUCT_CONTEXT_ENGINE_AVAILABLE = False
     logging.warning(
@@ -1106,27 +1104,40 @@ def detect_domains(
                     domain
                 )
 
-    # Ontology-driven routing (Product Context Engine): a known in-scope
-    # ingredient is a biological resource (ABS); one with a traditional
-    # knowledge / AYUSH use also routes to TK unless the user said "No".
-    if ProductContextEngine is not None:
-        try:
-            engine = ProductContextEngine()
-            for canonical in engine.resolve_ingredients(product.ingredients):
-                record = engine.ontology.get(canonical)
-                if not record or record.get("in_scope") is False:
-                    continue
-                contexts = set(record.get("common_product_contexts", []))
-                if (
-                    contexts & {"traditional knowledge", "ayush"}
-                    and tk_answer not in {"no", "false", "n", "0"}
-                    and "TK" not in domains
-                ):
-                    domains.insert(0, "TK")
-                if "ABS" not in domains:
-                    domains.append("ABS")
-        except Exception as e:
-            logger.warning("Ontology domain routing failed: %r", e)
+    # Known biological-resource ingredients
+    # are routing signals ONLY.
+    #
+    # They do NOT constitute ABS evidence.
+    ingredient_signals = {
+
+        "turmeric",
+        "curcuma",
+        "curcuma_longa",
+        "curcumin",
+        "aloe",
+        "aloe_vera",
+        "aloe_barbadensis"
+    }
+
+    ingredient_text = normalize_text(
+        " ".join(
+            product.ingredients
+        )
+    )
+
+    if any(
+        phrase_in_text(
+            ingredient_text,
+            signal
+        )
+        for signal in ingredient_signals
+    ):
+
+        if "ABS" not in domains:
+
+            domains.append(
+                "ABS"
+            )
 
     # IP is always a baseline
     # assessment domain.
@@ -3002,18 +3013,6 @@ def collect_evidence_legal_references(
     return references
 
 
-def _legal_reference_supported(ref, evidence_refs, evidence_blob):
-    if ref in evidence_refs:
-        return True
-    words = ref.split()
-    if len(words) >= 2 and words[-1] == "act":
-        # The Act pattern also swallows the words before the name
-        # ("filing under the patents act"), so check only the name
-        # itself against the evidence text and document names.
-        return " ".join(words[-2:]) in evidence_blob
-    return False
-
-
 def sanitize_unsupported_legal_references(
     analysis,
     evidence
@@ -3035,19 +3034,6 @@ def sanitize_unsupported_legal_references(
     if not evidence_refs:
 
         evidence_refs = set()
-
-    evidence_blob = " ".join(
-        normalize_text(str(item.get("text", "")))
-        + " "
-        + normalize_text(re.sub(r"[_.]", " ", str(item.get("source", ""))))
-        for item in evidence
-    )
-
-    def has_unsupported(refs):
-        return any(
-            not _legal_reference_supported(ref, evidence_refs, evidence_blob)
-            for ref in refs
-        )
 
     text_fields = [
         "summary",
@@ -3073,7 +3059,11 @@ def sanitize_unsupported_legal_references(
             value
         )
 
-        if has_unsupported(refs):
+        unsupported = (
+            refs - evidence_refs
+        )
+
+        if unsupported:
 
             analysis[field] = (
                 "Insufficient evidence. "
@@ -3099,7 +3089,7 @@ def sanitize_unsupported_legal_references(
             risk
         )
 
-        if has_unsupported(refs):
+        if refs - evidence_refs:
 
             cleaned_risks.append(
                 "Insufficient evidence."
@@ -3132,7 +3122,7 @@ def sanitize_unsupported_legal_references(
             recommendation
         )
 
-        if has_unsupported(refs):
+        if refs - evidence_refs:
 
             cleaned_verification.append(
                 "Verify the applicable legal framework "
@@ -3155,73 +3145,6 @@ def sanitize_unsupported_legal_references(
 # =========================================================
 # LLM REASONING
 # =========================================================
-
-GROQ_API_BASE = "https://api.groq.com/openai/v1"
-GROQ_PREFERRED_MODELS = ("openai/gpt-oss-20b", "llama-3.3-70b-versatile")
-
-
-class GroqError(RuntimeError):
-    def __init__(self, code, detail):
-        super().__init__(f"Groq HTTP {code}: {detail}")
-        self.code = code
-        self.detail = detail
-
-
-def _groq_request(api_key, path, payload=None, timeout=30):
-    req = Request(
-        GROQ_API_BASE + path,
-        method="POST" if payload is not None else "GET",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            # Groq's Cloudflare rejects the default Python-urllib
-            # User-Agent with 403 (error code 1010).
-            "User-Agent": "ip-sakti-backend/1.0",
-        },
-    )
-    body = json.dumps(payload).encode("utf-8") if payload is not None else None
-    try:
-        with urlopen(req, data=body, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as e:
-        raise GroqError(e.code, e.read().decode("utf-8", "replace")[:300]) from e
-
-
-@lru_cache(maxsize=4)
-def _groq_fallback_model(api_key):
-    """Pick an active chat model when the configured one is gone."""
-    data = _groq_request(api_key, "/models", timeout=15).get("data", [])
-    ids = [m.get("id", "") for m in data if m.get("active", True)]
-    for preferred in GROQ_PREFERRED_MODELS:
-        if preferred in ids:
-            return preferred
-    chat_models = [
-        i for i in ids
-        if not any(x in i for x in ("whisper", "tts", "guard", "embed", "orpheus"))
-    ]
-    return chat_models[0] if chat_models else None
-
-
-def groq_chat_completion(api_key, messages, json_mode=False, temperature=0.2, timeout=30):
-    model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
-    payload = {"model": model, "messages": messages, "temperature": temperature}
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
-    try:
-        res = _groq_request(api_key, "/chat/completions", payload, timeout)
-    except GroqError as e:
-        # 404 model_not_found / 400 model_decommissioned: retry once with
-        # a model Groq currently serves.
-        if not (e.code == 404 or (e.code == 400 and "model" in e.detail)):
-            raise
-        fallback = _groq_fallback_model(api_key)
-        if not fallback or fallback == model:
-            raise
-        logger.warning("Groq model %s unavailable (%s); using %s", model, e, fallback)
-        payload["model"] = fallback
-        res = _groq_request(api_key, "/chat/completions", payload, timeout)
-    return res["choices"][0]["message"]["content"]
-
 
 def generate_llm_reasoning(
     product,
@@ -3540,11 +3463,26 @@ Never convert retrieval signals into legal conclusions.
                 "summary": "Groq API Key not found. Please add GROQ_API_KEY in Render environment variables."
             })
 
-        content = groq_chat_completion(
-            groq_api_key,
-            [{"role": "user", "content": prompt}],
-            json_mode=True,
+        req = Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {groq_api_key}",
+                "Content-Type": "application/json"
+            }
         )
+
+        data = {
+            "model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.9
+        }
+
+        with urlopen(req, data=json.dumps(data).encode("utf-8"), timeout=30) as response:
+            res_body = response.read().decode("utf-8")
+            res_json = json.loads(res_body)
+            content = res_json["choices"][0]["message"]["content"]
 
         parsed = parse_json_object(
             content
@@ -4040,9 +3978,30 @@ def _common_sense_context_check(product, product_context=None):
         basis.extend("Product Context Engine: " + r for r in engine_reasons)
 
     # -------------------------------------------------------
+    # ENTITY RESOLUTION GATE (Rules 18, 20, 25)
+    # If product_context engine classified ALL submitted ingredients
+    # as invalid (ordinary word / form word / garbage / product type),
+    # fire a plausibility warning immediately — no ontology fallback needed.
+    # -------------------------------------------------------
+    _invalid_classes = {
+        "NON_INGREDIENT_COMMON_WORD", "FORM_WORD",
+        "RANDOM_GARBAGE", "PRODUCT_TYPE",
+    }
+    assessments = list(_context_value(product_context, "ingredient_assessments", []) or [])
+    if assessments and all(
+        a.get("ingredient_class") in _invalid_classes for a in assessments
+    ):
+        for a in assessments:
+            warnings.append(a.get("reason", "Term is not a recognisable ingredient."))
+        basis.append(
+            "Entity Resolution Gate: all submitted ingredients are non-ingredient terms."
+        )
+
+
+    # -------------------------------------------------------
     # FALLBACK: ONTOLOGY-BASED COMMON SENSE CHECK (for ALL ingredients)
     # -------------------------------------------------------
-    elif ontology and allowed_contexts:
+    if not warnings and ontology and allowed_contexts:
         # Build a map: normalized alias → canonical ingredient name
         alias_map = {}
         for canonical, record in ontology.items():
@@ -7352,9 +7311,6 @@ class AgentChatRequest(BaseModel):
 
     language: str = Field(default="en", max_length=10)
 
-    # "expert" (default) or "friendly": simple, conversational wording.
-    mode: str = Field(default="expert", max_length=20)
-
     @field_validator("query", "jurisdiction")
     @classmethod
     def clean_text(cls, value):
@@ -7397,200 +7353,13 @@ def _build_chat_pseudo_product(query: str, jurisdiction: str) -> ProductInput:
     )
 
 
-def _friendly_chat_answer(api_key, query, answer, language):
-    """Re-explain a grounded answer in simple, conversational words."""
-    lang_name = {"hi": "Hindi", "mr": "Marathi"}.get(language)
-    lang_rule = (
-        f"Reply in {lang_name}."
-        if lang_name
-        else "Reply in the same language and style as the question "
-        "(Hinglish if the question is in Hinglish, otherwise English)."
-    )
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are IP-SAKTI's friendly helper. Rewrite the expert answer "
-                "for a non-expert: warm tone, short simple sentences, no legal "
-                "jargon (briefly explain any term you must keep), at most 6 short "
-                "sentences or bullet points, and end with one practical next step. "
-                "Use ONLY facts from the expert answer; never add laws, section "
-                "numbers, fees, deadlines or advice that are not in it. If the "
-                "expert answer says the evidence is insufficient, say so simply. "
-                + lang_rule
-            ),
-        },
-        {"role": "user", "content": f"Question: {query}\n\nExpert answer:\n{answer}"},
-    ]
-    return groq_chat_completion(api_key, messages, temperature=0.4, timeout=20).strip()
-
-
-def _chat_web_search(query: str, jurisdiction: str, domains: List[str]) -> Dict[str, Any]:
-    """
-    Web research for a free-text chat question.
-
-    Unlike /api/analyze, chat always searches when web research is enabled:
-    the local corpus nearly always returns some generic Act chunks, so the
-    "existing evidence is sufficient" gate would skip every question.
-    The user's own question is the query (not the product template), once
-    against official domains and once open; only validated sources are kept.
-    """
-    if not AGENTIC_AI_ENABLED:
-        return {"status": "DISABLED", "web_evidence": [], "note": "Web search disabled (AGENTIC_AI_ENABLED is off)"}
-    if not os.getenv("TAVILY_API_KEY", "").strip():
-        return {"status": "DISABLED", "web_evidence": [], "note": "Web search not configured (TAVILY_API_KEY missing)"}
-
-    search_query = f"{query} {jurisdiction}".strip()
-    raw_results: List[Dict[str, Any]] = []
-    failed = 0
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [
-            executor.submit(official_source_search, search_query, AGENTIC_MAX_WEB_EVIDENCE),
-            executor.submit(web_search, search_query, None, AGENTIC_MAX_WEB_EVIDENCE),
-        ]
-        for future in as_completed(futures):
-            try:
-                result = future.result()
-            except Exception as exc:
-                logger.warning("Chat web search failed: %r", exc)
-                failed += 1
-                continue
-            if result.get("status") == "ERROR":
-                failed += 1
-            raw_results.extend(result.get("results", []) or [])
-
-    domain = (domains or ["IP"])[0]
-    validated = [
-        item for item in source_validation(
-            evidence_deduplication(raw_results), query=query, domain=domain
-        )
-        if item.get("validated")
-    ][:AGENTIC_MAX_WEB_EVIDENCE]
-
-    if validated:
-        note = f"Web search performed ({len(validated)} validated source(s))"
-    elif failed == 2:
-        note = "Web search failed (provider error)"
-    else:
-        note = "Web search performed (no validated sources found)"
-    return {
-        "status": "SUCCESS" if validated else "NO_VALIDATED_SOURCES",
-        "web_evidence": [_to_structured_web_evidence(x) for x in validated],
-        "note": note,
-    }
-
-
-_CHAT_GREETING_RE = re.compile(
-    r"^(?:h+i+|he+y+|hel+o+|hal+o+|hola|yo|namaste|namaskar|namaskaram|pranam|"
-    r"good\s+(?:morning|afternoon|evening|night)|sat\s+sri\s+akal|salaam|salam)$"
-)
-_CHAT_THANKS_RE = re.compile(
-    r"^(?:thanks?|thank\s+you|thanku|thx|ty|dhanyavaad|dhanyavad|dhanyawad|shukriya|"
-    r"ok+|okay|cool|nice|great|bye|good\s*bye)$"
-)
-_CHAT_IDENTITY_RE = re.compile(
-    r"^(?:how\s+are\s+you|kaise\s+ho|kya\s+haal\s+hai|who\s+are\s+you|"
-    r"what\s+(?:can|do)\s+you\s+do|what\s+is\s+this|tum\s+kaun\s+ho|aap\s+kaun\s+ho|help)$"
-)
-_CHAT_FILLER = r"(?:\s+(?:there|bro|sir|madam|ji|dear|team|ip\s*-?\s*sakti|bot|ai|so|very|much|a|lot))*"
-# Devanagari greetings / thanks (compared after stripping punctuation).
-_CHAT_GREETING_NATIVE = {"नमस्ते", "नमस्कार", "प्रणाम", "हेलो", "हैलो", "हाय", "नमस्ते जी", "नमस्कार जी"}
-_CHAT_THANKS_NATIVE = {"धन्यवाद", "शुक्रिया", "आभार", "धन्यवाद जी"}
-
-_CHAT_INTRO = {
-    "en": (
-        "Hello! I'm IP-SAKTI AI. I answer questions about patents and IP, "
-        "traditional knowledge (TK), access & benefit sharing (ABS) and Ayurveda "
-        "regulations in India, using official sources. Try: \"Is an Ashwagandha "
-        "formulation patentable?\" or \"Do I need NBA approval to use neem commercially?\""
-    ),
-    "hi": (
-        "नमस्ते! मैं IP-SAKTI AI हूँ। मैं भारत में पेटेंट/IP, पारंपरिक ज्ञान (TK), "
-        "पहुँच और लाभ-साझाकरण (ABS) और आयुर्वेद नियमों पर आधिकारिक स्रोतों से जवाब देता हूँ। "
-        "पूछकर देखें: \"क्या अश्वगंधा फ़ॉर्मूलेशन पेटेंट हो सकता है?\" या "
-        "\"नीम के व्यावसायिक उपयोग के लिए क्या NBA की अनुमति चाहिए?\""
-    ),
-    "mr": (
-        "नमस्कार! मी IP-SAKTI AI आहे. मी भारतातील पेटंट/IP, पारंपारिक ज्ञान (TK), "
-        "प्रवेश आणि लाभ-वाटप (ABS) आणि आयुर्वेद नियमांबद्दल अधिकृत स्रोतांवरून उत्तरे देतो. "
-        "विचारून पाहा: \"अश्वगंधा फॉर्म्युलेशन पेटंट होऊ शकते का?\""
-    ),
-}
-_CHAT_THANKS = {
-    "en": "You're welcome! Ask me anything about IP, traditional knowledge, ABS or Ayurveda regulations.",
-    "hi": "आपका स्वागत है! IP, पारंपरिक ज्ञान, ABS या आयुर्वेद नियमों के बारे में कुछ भी पूछिए।",
-    "mr": "आपले स्वागत आहे! IP, पारंपारिक ज्ञान, ABS किंवा आयुर्वेद नियमांबद्दल काहीही विचारा.",
-}
-_CHAT_NOT_UNDERSTOOD = {
-    "en": "Sorry, I couldn't understand that. Please ask a question about patents/IP, traditional knowledge, ABS or Ayurveda regulations in India.",
-    "hi": "माफ़ कीजिए, मैं समझ नहीं पाया। कृपया भारत में पेटेंट/IP, पारंपरिक ज्ञान, ABS या आयुर्वेद नियमों के बारे में प्रश्न पूछें।",
-    "mr": "माफ करा, मला समजले नाही. कृपया भारतातील पेटंट/IP, पारंपारिक ज्ञान, ABS किंवा आयुर्वेद नियमांबद्दल प्रश्न विचारा.",
-}
-
-
-def _chat_small_talk(query: str, language: str) -> Dict[str, Any] | None:
-    """
-    Greetings, thanks and gibberish get a short reply without retrieval,
-    web search or the LLM (which would otherwise "analyse" the word "hi"
-    against the Patents Act). Returns None for real questions.
-    """
-    raw = str(query or "").strip()
-    native = re.sub(r"\s+", " ", re.sub(r"[!?.,।]", " ", raw)).strip()
-    text = re.sub(r"[^a-z0-9\s-]", " ", raw.lower())
-    text = re.sub(r"\s+", " ", text).strip()
-
-    def matches(pattern):
-        return bool(re.fullmatch(pattern.pattern[:-1] + _CHAT_FILLER + "$", text))
-
-    if native in _CHAT_GREETING_NATIVE:
-        kind, replies = "greeting", _CHAT_INTRO
-    elif native in _CHAT_THANKS_NATIVE:
-        kind, replies = "thanks", _CHAT_THANKS
-    elif re.search(r"[^\x00-\x7f]", raw):
-        return None  # Other Devanagari text — let the full pipeline handle it.
-    elif not text:
-        kind, replies = "not_understood", _CHAT_NOT_UNDERSTOOD
-    elif matches(_CHAT_GREETING_RE) or matches(_CHAT_IDENTITY_RE):
-        kind, replies = "greeting", _CHAT_INTRO
-    elif matches(_CHAT_THANKS_RE):
-        kind, replies = "thanks", _CHAT_THANKS
-    elif ProductContextEngine is not None and not ProductContextEngine().has_known_words(text):
-        kind, replies = "not_understood", _CHAT_NOT_UNDERSTOOD
-    else:
-        return None
-
-    answer = replies.get(language) or replies["en"]
-    return {
-        "answer": answer,
-        "mode": "expert",
-        "sources": [],
-        "citations": [],
-        "confidence": None,
-        "domains": [],
-        "tools_used": [],
-        "agent_trace": [f"Small talk detected ({kind}); no search needed"],
-        "needs_human_review": False,
-        "human_review": {},
-        "missing_information": [],
-        "recommended_verification": [],
-        "disclaimer": (
-            "IP-SAKTI provides evidence-grounded information and does not "
-            "provide legal advice."
-        ),
-    }
-
-
-def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en", mode: str = "expert") -> Dict[str, Any]:
+def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en") -> Dict[str, Any]:
 
     agent_trace: List[str] = ["Query intent identified"]
     tools_used: List[str] = []
 
     jurisdiction = str(jurisdiction or "India").strip() or "India"
     language = normalize_language_code(language)
-
-    small_talk = _chat_small_talk(query, language)
-    if small_talk is not None:
-        return small_talk
 
     pseudo_product = _build_chat_pseudo_product(query, jurisdiction)
 
@@ -7623,15 +7392,24 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
         agent_trace.append("Knowledge Graph consulted")
 
     # ---------------------------------------------------
-    # 3. WEB SEARCH — chat-specific: the user's question,
-    #    official domains first, validated sources only.
-    #    Fail-safe: a search failure never breaks the answer.
+    # 3. WEB SEARCH — reuses the EXISTING fail-safe agentic
+    #    research layer (_run_agentic_stage/run_agentic_research),
+    #    which already decides whether web research is needed and
+    #    never breaks the response if web search fails.
     # ---------------------------------------------------
-    web_result = _chat_web_search(query, jurisdiction, domains)
-    web_evidence = web_result.get("web_evidence", []) or []
-    if web_result.get("status") != "DISABLED":
+    agentic_result = _run_agentic_stage(pseudo_product, local_evidence, validation)
+
+    web_evidence = agentic_result.get("web_evidence", []) or []
+    if agentic_result.get("research_triggered"):
         tools_used.append("web_search")
-    agent_trace.append(web_result["note"])
+        if web_evidence:
+            agent_trace.append(
+                f"Web search performed ({len(web_evidence)} validated source(s))"
+            )
+        else:
+            agent_trace.append("Web search performed (no validated sources found)")
+    else:
+        agent_trace.append("Web search skipped (existing evidence sufficient)")
 
     combined_evidence = list(local_evidence) + list(web_evidence)
 
@@ -7669,9 +7447,8 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
         parts = []
         if analysis.get("summary"):
             parts.append(str(analysis["summary"]))
-        interpretation = str(analysis.get("evidence_interpretation") or "")
-        if interpretation and interpretation not in parts:
-            parts.append(interpretation)
+        if analysis.get("evidence_interpretation"):
+            parts.append(str(analysis["evidence_interpretation"]))
         answer = "\n\n".join(parts).strip() or (
             "Insufficient evidence. I could not find grounded evidence "
             "to answer this question for the selected jurisdiction."
@@ -7691,20 +7468,8 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
             "are shown below for manual review."
         )
 
-    friendly_applied = False
-    if str(mode).lower() == "friendly" and llm_result.get("status") == "SUCCESS":
-        groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
-        if groq_api_key:
-            try:
-                answer = _friendly_chat_answer(groq_api_key, query, answer, language) or answer
-                friendly_applied = True
-                agent_trace.append("Answer simplified (friendly mode)")
-            except Exception as e:
-                logger.warning("Friendly rewrite failed; keeping expert answer: %r", e)
-
     return {
         "answer": answer,
-        "mode": "friendly" if friendly_applied else "expert",
         "sources": sources,
         "citations": sources,
         "confidence": confidence,
@@ -7734,17 +7499,11 @@ def agent_chat(request: AgentChatRequest):
             query=request.query,
             jurisdiction=request.jurisdiction,
             language=request.language,
-            mode=request.mode,
         )
 
         # Translate only the user-facing answer. Source titles, URLs,
-        # citations, and evidence text remain unchanged. Friendly answers
-        # are written directly in the requested language.
-        if (
-            request.language in {"hi", "mr"}
-            and result.get("answer")
-            and result.get("mode") != "friendly"
-        ):
+        # citations, and evidence text remain unchanged.
+        if request.language in {"hi", "mr"} and result.get("answer"):
             result["answer"] = translate_text(
                 result["answer"],
                 "en",
@@ -8082,10 +7841,8 @@ def analyze_product(
     # Product Context Engine has the final say on relevance:
     # an ingredient that does not belong to the product category
     # (e.g. chilli in a cosmetic) cannot earn evidence confidence.
-    out_of_scope_reasons = None
     if _context_value(product_context, "relevance_status") == "IRRELEVANT":
         reasons = list(_context_value(product_context, "relevance_reasons", []) or [])
-        out_of_scope_reasons = reasons
         confidence.update({
             "level": "OUT_OF_SCOPE",
             "score": 0.0,
@@ -8096,20 +7853,6 @@ def analyze_product(
                 "Confidence is 0% because the Product Context Engine found the product context irrelevant."
             ] + list(confidence.get("basis", []) or []),
         })
-        # Chunks retrieved for an irrelevant product are not evidence for
-        # it; drop them so validation, sources and action plan agree.
-        evidence = []
-        validation = {
-            **validation,
-            "status": "OUT_OF_SCOPE",
-            "message": (
-                "Product Context Engine: " + " ".join(reasons)
-                + " No evidence is shown for an irrelevant product context."
-            ),
-            "supported_domains": [],
-            "unsupported_domains": list(domains),
-            "evidence_count": 0,
-        }
 
     # -----------------------------------------------------
     # SOURCES
@@ -8256,16 +7999,6 @@ def analyze_product(
         validation=validation
     )
 
-    if out_of_scope_reasons is not None:
-        action_plan = [
-            "Check that the ingredients fit the selected product type: "
-            + " ".join(out_of_scope_reasons),
-            "If the product type is wrong (e.g. a spice entered as Cosmetic), "
-            "select the correct type and analyze again.",
-            "If this ingredient really is used in this product type, the system "
-            "has no record of that use yet; have it verified by an IP/TK/ABS expert.",
-        ]
-
     # -----------------------------------------------------
     # MVP ENHANCEMENT OUTPUTS
     # -----------------------------------------------------
@@ -8324,7 +8057,7 @@ def analyze_product(
     # product-purpose conclusion. If the deterministic confidence
     # layer identifies a context mismatch, override the narrative
     # assessment with a transparent abstention message.
-    if confidence.get("status") in ("CONTEXT_MISMATCH", "OUT_OF_SCOPE"):
+    if confidence.get("status") == "CONTEXT_MISMATCH":
         mismatch_message = confidence.get(
             "message",
             "Retrieved evidence does not align with the user's stated purpose."
@@ -8385,6 +8118,299 @@ def analyze_product(
             "contextual_queries": contextual_queries,
         },
 
+        "app_version":
+            APP_VERSION,
+
+        "product":
+            product.model_dump(),
+
+        "classification":
+            classification,
+
+        "domains":
+            domains,
+
+        "search_query":
+            query,
+
+        "evidence":
+            sanitize_evidence(
+                evidence
+            ),
+
+        "reasoning":
+            reasoning,
+
+        "llm_reasoning":
+            llm_reasoning,
+
+        "validation":
+            validation,
+
+        "confidence":
+            confidence,
+
+        # Explicit final-assessment state for the frontend.
+        # This prevents a generic LOW percentage from hiding a
+        # product/evidence context mismatch.
+        "assessment_status":
+            confidence.get(
+                "status",
+                "UNKNOWN"
+            ),
+
+        "assessment_message":
+            confidence.get(
+                "message",
+                ""
+            ),
+
+        "action_plan":
+            action_plan,
+
+        # =================================================
+        # UPDATED STREAMLIT MVP CONTRACT
+        # =================================================
+
+        "product_classification":
+            product_classification,
+
+        "domain_routing":
+            domain_routing,
+
+        "evidence_validation":
+            validation,
+
+        "evidence_confidence":
+            confidence,
+
+        # Keep "evidence" as the canonical retrieved-evidence
+        # field for backward compatibility.
+        "retrieved_evidence":
+            sanitize_evidence(
+                evidence
+            ),
+
+        "sources":
+            source_records,
+
+        "ai_assessment":
+            ai_assessment,
+
+        "recommended_verification":
+            recommended_verification,
+
+        "missing_information":
+            missing_information,
+
+        "recommended_action_plan":
+            action_plan,
+
+        "human_escalation":
+            human_escalation,
+
+        "safe_decision":
+            safe_decision,
+
+        "agentic_research":
+            agentic_research,
+
+        "evidence_fusion": {
+            "local_evidence_count": len(evidence),
+            "agentic_validated_evidence_count": len(agentic_evidence),
+            "llm_reasoning_evidence_count": len(evidence_for_reasoning),
+            "note": "Validated agentic web evidence is additive to local IP-SAKTI evidence."
+        },
+
+        "mvp":
+            {
+                "name":
+                    "IP-SAKTI Evidence-First MVP",
+
+                "version":
+                    APP_VERSION,
+
+                "language_service":
+                    (
+                        "Bhashini"
+                        if BHASHINI_ENABLED
+                        else "fallback"
+                    ),
+
+                "features": [
+                    "Product classification",
+                    "IP/TK/ABS domain routing",
+                    "Hybrid evidence retrieval",
+                    "Evidence validation",
+                    "Evidence confidence",
+                    "Grounded Ollama reasoning",
+                    "Missing-information detection",
+                    "Human escalation",
+                    "Safe abstention",
+                    "Multilingual UI translation",
+                    "Optional agentic web research",
+                    "Source authority validation",
+                    "Contradiction detection"
+                ],
+
+                "legal_disclaimer":
+                    (
+                        "Prototype only. The system does not "
+                        "provide legal advice or establish legal "
+                        "compliance, liability, patentability, "
+                        "ownership, infringement, TK rights or "
+                        "ABS obligations."
+                    )
+            }
+    }
+
+
+# =========================================================
+# ROOT
+# =========================================================
+
+@app.get("/")
+def root():
+
+    corpus = load_corpus()
+
+    return {
+
+        "message":
+            "IP-SAKTI MVP API is running",
+
+        "version":
+            APP_VERSION,
+
+        "docs":
+            "/docs",
+
+        "conversation":
+            (
+                "/api/conversation/start"
+                if conversation_router
+                is not None
+                else None
+            ),
+
+        "corpus_chunks":
+            len(corpus),
+
+        "llm":
+            OLLAMA_MODEL,
+
+        "bge_embeddings":
+            EMBEDDINGS_AVAILABLE,
+
+        "embedding_model":
+            EMBEDDING_MODEL,
+
+        "language_service":
+            (
+                "Bhashini"
+                if BHASHINI_ENABLED
+                else "fallback"
+            ),
+
+        "supported_languages":
+            SUPPORTED_LANGUAGES
+    }
+
+
+# =========================================================
+# HEALTH CHECK
+# =========================================================
+
+@app.get(
+    "/api/health"
+)
+def health():
+
+    corpus = load_corpus()
+
+    return {
+
+        "status":
+            "ok",
+
+        "version":
+            APP_VERSION,
+
+        "corpus_available":
+            bool(corpus),
+
+        "corpus_chunks":
+            len(corpus),
+
+        "ollama_model":
+            OLLAMA_MODEL,
+
+        "bge_embeddings":
+            EMBEDDINGS_AVAILABLE,
+
+        "embedding_model":
+            EMBEDDING_MODEL,
+
+        "conversation_router":
+            conversation_router
+            is not None,
+
+        "bhashini_enabled":
+            BHASHINI_ENABLED,
+
+        "supported_languages":
+            SUPPORTED_LANGUAGES
+    }
+
+
+# =========================================================
+# DEVELOPMENT CORPUS RELOAD
+# =========================================================
+
+@app.post(
+    "/api/admin/reload-corpus"
+)
+def reload_corpus():
+
+    """
+    Development helper.
+
+    For production, protect this endpoint
+    with authentication or remove it.
+    """
+
+    corpus = load_corpus(
+        force_reload=True
+    )
+
+    return {
+
+        "status":
+            "reloaded",
+
+        "corpus_chunks":
+            len(corpus)
+    }
+
+
+# =========================================================
+# LOCAL START
+# =========================================================
+
+if __name__ == "__main__":
+
+    import uvicorn
+
+    uvicorn.run(
+
+        "main:app",
+
+        host="127.0.0.1",
+
+        port=8000,
+
+        reload=True
+    )
         "app_version":
             APP_VERSION,
 
