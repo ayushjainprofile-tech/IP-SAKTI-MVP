@@ -5214,6 +5214,10 @@ def sanitize_evidence(
                     []
                 ),
 
+            # Web evidence links to the page it came from.
+            "source_url":
+                item.get("source_url") or item.get("url"),
+
             "text":
                 item.get(
                     "text",
@@ -8257,6 +8261,12 @@ def analyze_product(
             "unsupported_domains": list(domains),
             "evidence_count": 0,
         }
+
+    # Everything shown (evidence, sources, validation, action plan) must be
+    # the evidence the score was computed from: local + gate-passed web.
+    if out_of_scope_reasons is None and agentic_evidence:
+        evidence = list(evidence_for_reasoning)
+        validation = validation_for_reasoning
 
     # -----------------------------------------------------
     # SOURCES
