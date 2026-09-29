@@ -7425,6 +7425,61 @@ def _friendly_chat_answer(api_key, query, answer, language):
     return groq_chat_completion(api_key, messages, temperature=0.4, timeout=20).strip()
 
 
+def _chat_web_search(query: str, jurisdiction: str, domains: List[str]) -> Dict[str, Any]:
+    """
+    Web research for a free-text chat question.
+
+    Unlike /api/analyze, chat always searches when web research is enabled:
+    the local corpus nearly always returns some generic Act chunks, so the
+    "existing evidence is sufficient" gate would skip every question.
+    The user's own question is the query (not the product template), once
+    against official domains and once open; only validated sources are kept.
+    """
+    if not AGENTIC_AI_ENABLED:
+        return {"status": "DISABLED", "web_evidence": [], "note": "Web search disabled (AGENTIC_AI_ENABLED is off)"}
+    if not os.getenv("TAVILY_API_KEY", "").strip():
+        return {"status": "DISABLED", "web_evidence": [], "note": "Web search not configured (TAVILY_API_KEY missing)"}
+
+    search_query = f"{query} {jurisdiction}".strip()
+    raw_results: List[Dict[str, Any]] = []
+    failed = 0
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(official_source_search, search_query, AGENTIC_MAX_WEB_EVIDENCE),
+            executor.submit(web_search, search_query, None, AGENTIC_MAX_WEB_EVIDENCE),
+        ]
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+            except Exception as exc:
+                logger.warning("Chat web search failed: %r", exc)
+                failed += 1
+                continue
+            if result.get("status") == "ERROR":
+                failed += 1
+            raw_results.extend(result.get("results", []) or [])
+
+    domain = (domains or ["IP"])[0]
+    validated = [
+        item for item in source_validation(
+            evidence_deduplication(raw_results), query=query, domain=domain
+        )
+        if item.get("validated")
+    ][:AGENTIC_MAX_WEB_EVIDENCE]
+
+    if validated:
+        note = f"Web search performed ({len(validated)} validated source(s))"
+    elif failed == 2:
+        note = "Web search failed (provider error)"
+    else:
+        note = "Web search performed (no validated sources found)"
+    return {
+        "status": "SUCCESS" if validated else "NO_VALIDATED_SOURCES",
+        "web_evidence": [_to_structured_web_evidence(x) for x in validated],
+        "note": note,
+    }
+
+
 def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en", mode: str = "expert") -> Dict[str, Any]:
 
     agent_trace: List[str] = ["Query intent identified"]
@@ -7464,24 +7519,15 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
         agent_trace.append("Knowledge Graph consulted")
 
     # ---------------------------------------------------
-    # 3. WEB SEARCH — reuses the EXISTING fail-safe agentic
-    #    research layer (_run_agentic_stage/run_agentic_research),
-    #    which already decides whether web research is needed and
-    #    never breaks the response if web search fails.
+    # 3. WEB SEARCH — chat-specific: the user's question,
+    #    official domains first, validated sources only.
+    #    Fail-safe: a search failure never breaks the answer.
     # ---------------------------------------------------
-    agentic_result = _run_agentic_stage(pseudo_product, local_evidence, validation)
-
-    web_evidence = agentic_result.get("web_evidence", []) or []
-    if agentic_result.get("research_triggered"):
+    web_result = _chat_web_search(query, jurisdiction, domains)
+    web_evidence = web_result.get("web_evidence", []) or []
+    if web_result.get("status") != "DISABLED":
         tools_used.append("web_search")
-        if web_evidence:
-            agent_trace.append(
-                f"Web search performed ({len(web_evidence)} validated source(s))"
-            )
-        else:
-            agent_trace.append("Web search performed (no validated sources found)")
-    else:
-        agent_trace.append("Web search skipped (existing evidence sufficient)")
+    agent_trace.append(web_result["note"])
 
     combined_evidence = list(local_evidence) + list(web_evidence)
 
