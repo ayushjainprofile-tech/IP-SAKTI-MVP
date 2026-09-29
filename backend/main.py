@@ -3888,19 +3888,13 @@ def _evidence_context_alignment(evidence_item, product=None):
 
 def _common_sense_context_check(product, product_context=None):
     """
-    Deterministic plausibility guard powered by Product Context Engine.
+    Deterministic plausibility guard — SELF-CONTAINED.
 
-    Uses the ontology from product_context_engine.py to check if the
-    user's ingredient(s) actually make sense for the declared product
-    category/purpose. This works for ALL ingredients, not just chilli.
+    Loads ingredient_ontology.json directly and checks if the user's
+    ingredient(s) make sense for the declared product type/category.
+    This works for ALL 36 ingredients in the ontology.
 
-    Examples (from ontology):
-        Chilli  → contexts: [food/spice, traditional knowledge, agricultural]
-                  So Chilli + Cosmetic = WARNING (cosmetic not in contexts)
-        Turmeric → contexts: [food/spice, cosmetic, ayush, supplement, ...]
-                  So Turmeric + Cosmetic = OK (cosmetic IS in contexts)
-        Neem     → contexts: [cosmetic, ayush, traditional knowledge, ...]
-                  So Neem + Food = WARNING (food not in contexts)
+    Does NOT depend on product_context_engine.py importing successfully.
     """
     if product is None:
         return {
@@ -3914,81 +3908,103 @@ def _common_sense_context_check(product, product_context=None):
     basis = []
 
     # -------------------------------------------------------
-    # STEP 1: USE PRODUCT CONTEXT ENGINE (ontology-based)
+    # LOAD ONTOLOGY DIRECTLY (self-contained, no external import)
     # -------------------------------------------------------
-    # Maps product_category → allowed ontology context tags.
-    _category_to_contexts = {
-        "FOOD":                 {"food/spice", "food", "beverage"},
-        "COSMETIC":             {"cosmetic"},
-        "AYURVEDA / AYUSH":     {"ayush", "traditional knowledge"},
-        "HEALTH / SUPPLEMENT":  {"supplement"},
-        "AGRICULTURAL":         {"agricultural"},
-        "RESEARCH / INDUSTRIAL": {"research", "industrial"},
+    ontology = {}
+    try:
+        import pathlib
+        ontology_path = pathlib.Path(__file__).resolve().parent / "data" / "ingredient_ontology.json"
+        if ontology_path.exists():
+            with ontology_path.open("r", encoding="utf-8") as f:
+                ontology = json.load(f)
+    except Exception:
+        pass
+
+    # -------------------------------------------------------
+    # NORMALIZE USER INPUTS
+    # -------------------------------------------------------
+    name = normalize_text(getattr(product, "product_name", ""))
+    ingredients_raw = getattr(product, "ingredients", []) or []
+    ingredients_text = normalize_text(" ".join(ingredients_raw))
+    purpose = normalize_text(getattr(product, "purpose", ""))
+    product_type = normalize_text(getattr(product, "product_type", ""))
+
+    # Map user-facing product_type to ontology context tags.
+    _type_to_context_tags = {
+        "cosmetic":                 {"cosmetic"},
+        "food":                     {"food/spice", "food", "beverage"},
+        "ayurvedic formulation":    {"ayush", "traditional knowledge"},
+        "ayurvedic_formulation":    {"ayush", "traditional knowledge"},
+        "ayurveda":                 {"ayush", "traditional knowledge"},
+        "ayush":                    {"ayush", "traditional knowledge"},
+        "classical medicine":       {"ayush", "traditional knowledge"},
+        "patent/proprietary medicine": {"ayush", "traditional knowledge"},
+        "supplement":               {"supplement"},
+        "nutraceutical":            {"supplement", "food/spice"},
+        "agricultural":             {"agricultural"},
+        "research":                 {"research"},
+        "industrial":               {"industrial"},
     }
 
-    if product_context is not None:
-        # Read from ProductContext object or dict.
-        if hasattr(product_context, "product_category"):
-            pce_category = product_context.product_category
-            pce_possible = list(product_context.possible_contexts or [])
-            pce_ambiguities = list(product_context.ambiguities or [])
-            pce_needs_clarification = product_context.requires_clarification
-            pce_ingredients = list(product_context.normalized_ingredients or [])
-        elif isinstance(product_context, dict):
-            pce_category = product_context.get("product_category", "UNKNOWN")
-            pce_possible = product_context.get("possible_contexts", [])
-            pce_ambiguities = product_context.get("ambiguities", [])
-            pce_needs_clarification = product_context.get("requires_clarification", False)
-            pce_ingredients = product_context.get("normalized_ingredients", [])
-        else:
-            pce_category = "UNKNOWN"
-            pce_possible = []
-            pce_ambiguities = []
-            pce_needs_clarification = False
-            pce_ingredients = []
+    allowed_contexts = _type_to_context_tags.get(product_type, set())
 
-        allowed_contexts = _category_to_contexts.get(pce_category, set())
+    # -------------------------------------------------------
+    # ONTOLOGY-BASED COMMON SENSE CHECK (for ALL ingredients)
+    # -------------------------------------------------------
+    if ontology and allowed_contexts:
+        # Build a map: normalized alias → canonical ingredient name
+        alias_map = {}
+        for canonical, record in ontology.items():
+            for alias in [canonical] + record.get("common_names", []) + record.get("regional_names", []):
+                alias_map[normalize_text(alias)] = canonical
 
-        if pce_category != "UNKNOWN" and allowed_contexts and pce_possible:
-            # Check if ANY of the ingredient's possible contexts
-            # overlap with the declared product category's allowed contexts.
-            overlap = set(pce_possible) & allowed_contexts
+        # Find which ontology ingredients the user mentioned
+        matched_ingredients = []
+        all_possible_contexts = set()
+
+        for raw_ing in ingredients_raw:
+            norm_ing = normalize_text(raw_ing)
+            canonical = alias_map.get(norm_ing)
+            if canonical:
+                matched_ingredients.append(canonical)
+                record = ontology.get(canonical, {})
+                contexts = set(record.get("common_product_contexts", []))
+                all_possible_contexts.update(contexts)
+
+        # Also check product name for ingredient aliases
+        if not matched_ingredients:
+            norm_name = normalize_text(name)
+            for alias, canonical in alias_map.items():
+                if len(alias) >= 3 and alias in norm_name:
+                    matched_ingredients.append(canonical)
+                    record = ontology.get(canonical, {})
+                    contexts = set(record.get("common_product_contexts", []))
+                    all_possible_contexts.update(contexts)
+                    break
+
+        if matched_ingredients and all_possible_contexts:
+            overlap = all_possible_contexts & allowed_contexts
 
             if not overlap:
-                # MISMATCH: the ingredient does NOT belong to this category.
+                # MISMATCH: ingredient does NOT belong to this product type!
                 warnings.append(
-                    f"The ingredient(s) ({', '.join(pce_ingredients) if pce_ingredients else 'detected'}) "
-                    f"are not typically associated with the '{pce_category}' product category. "
-                    f"Known valid contexts for these ingredients: {', '.join(pce_possible)}. "
-                    f"The system cannot assume suitability from an ingredient match alone."
+                    f"The ingredient(s) ({', '.join(matched_ingredients)}) "
+                    f"are not typically used in '{product_type}' products. "
+                    f"Valid uses for these ingredients: "
+                    f"{', '.join(sorted(all_possible_contexts))}. "
+                    f"The system cannot assume suitability."
                 )
                 basis.append(
-                    f"ingredient-category mismatch: ingredients do not fit '{pce_category}' "
-                    f"(ontology contexts: {pce_possible})"
+                    f"ingredient-category mismatch: {matched_ingredients} "
+                    f"not valid for '{product_type}' "
+                    f"(allowed: {sorted(all_possible_contexts)})"
                 )
 
-        # Ambiguity warning: product context is unclear.
-        if pce_needs_clarification and not warnings:
-            warnings.append(
-                "The product context is ambiguous. The intended use was not "
-                "clearly specified, so the system cannot reliably assess "
-                "the product. Please specify the intended use."
-            )
-            basis.append("product context requires clarification")
-
     # -------------------------------------------------------
-    # STEP 2: FALLBACK HARDCODED CHECKS (when engine is absent)
+    # ADDITIONAL HARDCODED CHECKS (catch-all safety net)
     # -------------------------------------------------------
-    if not warnings and product_context is None:
-        name = normalize_text(getattr(product, "product_name", ""))
-        ingredients_text = normalize_text(
-            " ".join(getattr(product, "ingredients", []) or [])
-        )
-        purpose = normalize_text(getattr(product, "purpose", ""))
-        product_type = normalize_text(getattr(product, "product_type", ""))
-
+    if not warnings:
         purpose_tokens = _alignment_tokens(purpose)
-        type_tokens = _alignment_tokens(product_type)
 
         # Cosmetic + medicinal purpose conflict.
         if product_type == "cosmetic":
@@ -4530,32 +4546,29 @@ def calculate_confidence(
     # The engine knows that "Chilli + Food" is valid but
     # "Chilli + Cosmetic" deserves a plausibility warning.
 
-    _pce_category = None
-    _pce_confidence = 0.0
-    if product_context is not None:
-        if hasattr(product_context, "product_category"):
-            _pce_category = product_context.product_category
-            _pce_confidence = product_context.context_confidence
-        elif isinstance(product_context, dict):
-            _pce_category = product_context.get("product_category")
-            _pce_confidence = product_context.get("context_confidence", 0.0)
+    _pce_category = _context_value(product_context, "product_category", None)
+    _pce_confidence = _safe_float(
+        _context_value(product_context, "context_confidence", 0.0), 0.0
+    )
+    _pce_relevance = _context_value(product_context, "relevance_status", None)
+    _pce_reasons = list(_context_value(product_context, "relevance_reasons", []) or [])
 
-    # Categories that the Product Context Engine considers valid:
-    _valid_pce_categories = {
-        "FOOD", "COSMETIC", "AYURVEDA / AYUSH", "HEALTH / SUPPLEMENT",
-        "AGRICULTURAL", "RESEARCH / INDUSTRIAL",
-    }
-
-    if _pce_category and _pce_category in _valid_pce_categories and _pce_confidence > 0:
-        # Product Context Engine says this is a real, classifiable product.
-        # Trust it — do NOT reject with the old ecosystem gate.
+    if _pce_relevance == "IRRELEVANT":
+        ecosystem_relevant = False
+        ecosystem_reason = "Product Context Engine: " + (
+            "; ".join(_pce_reasons) or "ingredients do not fit the product category."
+        )
+    elif _pce_relevance == "RELEVANT":
+        # The engine verified the ingredients against the product
+        # category — trust it over the hardcoded ecosystem gate.
         ecosystem_relevant = True
         ecosystem_reason = (
             f"Product Context Engine classified as {_pce_category} "
             f"with context confidence {_pce_confidence:.0%}."
         )
     else:
-        # Fallback to the old ecosystem check for safety.
+        # Engine could not decide (e.g. ingredient not in ontology):
+        # fall back to the old ecosystem check.
         ecosystem_relevant, ecosystem_reason = _ayurveda_ecosystem_relevance(
             product,
             validation,
@@ -4565,10 +4578,24 @@ def calculate_confidence(
     # stated product/purpose?
     no_relevant_context = not context_candidates
 
+    # When the engine has verified the product context, a corpus that
+    # does not literally repeat the purpose wording must not force 0%.
+    # Confidence then rests on the engine, capped below evidence-backed levels.
+    engine_supported = (
+        ecosystem_relevant
+        and no_relevant_context
+        and _pce_relevance == "RELEVANT"
+        and bool(evaluated)
+    )
+
     if not ecosystem_relevant:
         score = 0.0
         no_relevant_context = True
         relevance_status = "OUT_OF_SCOPE"
+    elif engine_supported:
+        no_relevant_context = False
+        score = max(0.0, min(0.55, score, _pce_confidence))
+        relevance_status = "CONTEXT_ENGINE_SUPPORTED"
     elif no_relevant_context:
         score = 0.0
         relevance_status = "NO_RELEVANT_EVIDENCE"
@@ -4720,6 +4747,8 @@ def calculate_confidence(
         confidence_status = "OUT_OF_SCOPE"
     elif no_relevant_context:
         confidence_status = "NO_RELEVANT_EVIDENCE"
+    elif engine_supported:
+        confidence_status = "CONTEXT_ENGINE_SUPPORTED"
     elif ingredient_only:
         confidence_status = "INGREDIENT_ONLY"
     elif plausibility["status"] == "PLAUSIBILITY_WARNING":
@@ -4742,6 +4771,12 @@ def calculate_confidence(
         )
     else:
         basis.append(ecosystem_reason)
+
+    if engine_supported:
+        basis.append(
+            "Retrieved evidence does not directly mention the stated purpose; "
+            "confidence is based on the Product Context Engine and capped at 55%."
+        )
 
     if plausibility["status"] == "COHERENT":
         basis.append("product-context coherence")
