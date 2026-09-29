@@ -4555,71 +4555,41 @@ def calculate_confidence(
         score = 0.0
 
     # ---------------------------------------------------------
-    # TWO-STAGE RELEVANCE GATE — PRODUCT CONTEXT ENGINE AWARE
+    # TWO-STAGE RELEVANCE GATE
     # ---------------------------------------------------------
-    # If the Product Context Engine is available and has analyzed
-    # the product, use its smart category detection instead of
-    # the hardcoded _ayurveda_ecosystem_relevance.
-    #
-    # The engine knows that "Chilli + Food" is valid but
-    # "Chilli + Cosmetic" deserves a plausibility warning.
+    # CRITICAL: If the ontology-based plausibility check already
+    # flagged a PLAUSIBILITY_WARNING (ingredient-category mismatch),
+    # the score is already 0 and must NOT be overridden here.
+    # This is the "common sense" gate from product_context_engine.py.
 
-    _pce_category = _context_value(product_context, "product_category", None)
-    _pce_confidence = _safe_float(
-        _context_value(product_context, "context_confidence", 0.0), 0.0
-    )
-    _pce_relevance = _context_value(product_context, "relevance_status", None)
-    _pce_reasons = list(_context_value(product_context, "relevance_reasons", []) or [])
-
-    if _pce_relevance == "IRRELEVANT":
+    if plausibility["status"] == "PLAUSIBILITY_WARNING":
+        # Ontology said the ingredient doesn't belong to this category.
+        # Score is already 0. Do NOT let the ecosystem gate override it.
         ecosystem_relevant = False
-        ecosystem_reason = "Product Context Engine: " + (
-            "; ".join(_pce_reasons) or "ingredients do not fit the product category."
-        )
-    elif _pce_relevance == "RELEVANT":
-        # The engine verified the ingredients against the product
-        # category — trust it over the hardcoded ecosystem gate.
-        ecosystem_relevant = True
-        ecosystem_reason = (
-            f"Product Context Engine classified as {_pce_category} "
-            f"with context confidence {_pce_confidence:.0%}."
-        )
+        ecosystem_reason = "; ".join(plausibility.get("warnings", ["Ingredient-category mismatch"]))
+        no_relevant_context = True
+        relevance_status = "OUT_OF_SCOPE"
     else:
-        # Engine could not decide (e.g. ingredient not in ontology):
-        # fall back to the old ecosystem check.
+        # Normal ecosystem relevance check (fallback).
         ecosystem_relevant, ecosystem_reason = _ayurveda_ecosystem_relevance(
             product,
             validation,
         )
 
-    # Stage 2: Does the retrieved evidence actually support the
-    # stated product/purpose?
-    no_relevant_context = not context_candidates
+        # Stage 2: Does the retrieved evidence actually support the
+        # stated product/purpose?
+        no_relevant_context = not context_candidates
 
-    # When the engine has verified the product context, a corpus that
-    # does not literally repeat the purpose wording must not force 0%.
-    # Confidence then rests on the engine, capped below evidence-backed levels.
-    engine_supported = (
-        ecosystem_relevant
-        and no_relevant_context
-        and _pce_relevance == "RELEVANT"
-        and bool(evaluated)
-    )
-
-    if not ecosystem_relevant:
-        score = 0.0
-        no_relevant_context = True
-        relevance_status = "OUT_OF_SCOPE"
-    elif engine_supported:
-        no_relevant_context = False
-        score = max(0.0, min(0.55, score, _pce_confidence))
-        relevance_status = "CONTEXT_ENGINE_SUPPORTED"
-    elif no_relevant_context:
-        score = 0.0
-        relevance_status = "NO_RELEVANT_EVIDENCE"
-    else:
-        score = max(0.0, min(0.95, score))
-        relevance_status = "RELEVANT"
+        if not ecosystem_relevant:
+            score = 0.0
+            no_relevant_context = True
+            relevance_status = "OUT_OF_SCOPE"
+        elif no_relevant_context:
+            score = 0.0
+            relevance_status = "NO_RELEVANT_EVIDENCE"
+        else:
+            score = max(0.0, min(0.95, score))
+            relevance_status = "RELEVANT"
 
     # Ingredient count/overlap is a supporting signal only.  Multiple
     # ingredients increase confidence only when they occur together with
@@ -4737,10 +4707,9 @@ def calculate_confidence(
 
     direct_authoritative_context = direct_corpus_support
 
-    if direct_authoritative_context:
+    if direct_authoritative_context and plausibility["status"] != "PLAUSIBILITY_WARNING":
         # The corpus directly supports the requested relationship.
-        # Allow the calibrated high-confidence band; do not require an
-        # arbitrary retrieval-quality threshold such as evidence_quality>=.70.
+        # But NEVER override ontology plausibility warnings.
         score = max(score, 0.90)
         relevance_status = "DIRECT_CORPUS_SUPPORT"
 
@@ -4765,8 +4734,8 @@ def calculate_confidence(
         confidence_status = "OUT_OF_SCOPE"
     elif no_relevant_context:
         confidence_status = "NO_RELEVANT_EVIDENCE"
-    elif engine_supported:
-        confidence_status = "CONTEXT_ENGINE_SUPPORTED"
+    elif plausibility["status"] == "PLAUSIBILITY_WARNING":
+        confidence_status = "PLAUSIBILITY_WARNING"
     elif ingredient_only:
         confidence_status = "INGREDIENT_ONLY"
     elif plausibility["status"] == "PLAUSIBILITY_WARNING":
@@ -4790,11 +4759,6 @@ def calculate_confidence(
     else:
         basis.append(ecosystem_reason)
 
-    if engine_supported:
-        basis.append(
-            "Retrieved evidence does not directly mention the stated purpose; "
-            "confidence is based on the Product Context Engine and capped at 55%."
-        )
 
     if plausibility["status"] == "COHERENT":
         basis.append("product-context coherence")
