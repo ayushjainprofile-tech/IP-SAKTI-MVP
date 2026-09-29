@@ -7437,6 +7437,55 @@ def _friendly_chat_answer(api_key, query, answer, language):
     return groq_chat_completion(api_key, messages, temperature=0.4, timeout=20).strip()
 
 
+def _chat_grounded_answer(api_key, query, evidence, language):
+    """Answer the chat question itself, using only the numbered evidence.
+
+    generate_llm_reasoning is built for product assessment (summary /
+    domain_analysis / risks) and never answers the question, so chat
+    answers were "the documents are IP-related" even when the evidence
+    listed the procedure.
+    """
+    blocks = []
+    for index, item in enumerate(evidence[:5], start=1):
+        text = str(item.get("text") or item.get("evidence_text") or "").strip()
+        if text:
+            source = item.get("url") or item.get("source") or "Unknown source"
+            blocks.append(f"[{index}] Source: {source}\n{text[:1800]}")
+    if not blocks:
+        return ""
+    lang_name = {"hi": "Hindi", "mr": "Marathi"}.get(language)
+    lang_rule = (
+        f"Reply in {lang_name}."
+        if lang_name
+        else "Reply in the same language and style as the question "
+        "(Hinglish if the question is in Hinglish, otherwise English)."
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are IP-SAKTI, an assistant for Indian IP, traditional "
+                "knowledge and access & benefit sharing questions. Answer the "
+                "user's question directly using ONLY the numbered evidence. "
+                "If the evidence describes a procedure, give it as numbered "
+                "steps, including any forms or fees it names. Cite the evidence "
+                "number after each point, like [1]. Never add laws, section "
+                "numbers, forms, fees or deadlines that are not in the evidence. "
+                "If the evidence covers only part of the question, answer that "
+                "part and say plainly what is not covered. If it does not answer "
+                "the question at all, say \"Insufficient evidence\" and what is "
+                "missing. This is general information, not legal advice. "
+                + lang_rule
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Question: {query}\n\nEvidence:\n\n" + "\n\n".join(blocks),
+        },
+    ]
+    return groq_chat_completion(api_key, messages, temperature=0.2, timeout=30).strip()
+
+
 def _chat_web_search(query: str, jurisdiction: str, domains: List[str]) -> Dict[str, Any]:
     """
     Web research for a free-text chat question.
@@ -7720,6 +7769,27 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
             "conclusion can be generated right now. Retrieved sources "
             "are shown below for manual review."
         )
+
+    # Answer the question itself from the same evidence the model saw.
+    # Falls back to the assessment summary above on any failure or if the
+    # answer names a legal reference the evidence does not contain.
+    if llm_result.get("status") == "SUCCESS":
+        groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
+        if groq_api_key:
+            try:
+                direct = _chat_grounded_answer(groq_api_key, query, llm_evidence, language)
+                # Same 5 items the model saw, so only references it was
+                # shown count as supported.
+                checked = sanitize_unsupported_legal_references(
+                    {"summary": direct}, llm_evidence[:5]
+                )
+                if direct and checked.get("summary") == direct:
+                    answer = direct
+                    agent_trace.append("Answer written from evidence")
+                elif direct:
+                    logger.warning("Chat answer cited unsupported legal reference; using summary")
+            except Exception as e:
+                logger.warning("Chat grounded answer failed; using summary: %r", e)
 
     friendly_applied = False
     if str(mode).lower() == "friendly" and llm_result.get("status") == "SUCCESS":
