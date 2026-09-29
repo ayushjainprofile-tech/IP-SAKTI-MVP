@@ -4132,6 +4132,7 @@ def calculate_confidence(
     evidence,
     validation,
     product=None,
+    product_context=None,
 ):
     """
     Calculate graded confidence for the FINAL PRODUCT ASSESSMENT.
@@ -4496,18 +4497,48 @@ def calculate_confidence(
         score = 0.0
 
     # ---------------------------------------------------------
-    # TWO-STAGE RELEVANCE GATE
+    # TWO-STAGE RELEVANCE GATE — PRODUCT CONTEXT ENGINE AWARE
     # ---------------------------------------------------------
-    # Stage 1: Is the input even part of the Ayurveda/AYUSH/TK/IP
-    # ecosystem?  If not, confidence is exactly 0%.
-    ecosystem_relevant, ecosystem_reason = _ayurveda_ecosystem_relevance(
-        product,
-        validation,
-    )
+    # If the Product Context Engine is available and has analyzed
+    # the product, use its smart category detection instead of
+    # the hardcoded _ayurveda_ecosystem_relevance.
+    #
+    # The engine knows that "Chilli + Food" is valid but
+    # "Chilli + Cosmetic" deserves a plausibility warning.
 
-    # Stage 2: If it is in the ecosystem, does the retrieved evidence
-    # actually support the stated product/purpose?  Retrieval/source/domain
-    # signals alone must not manufacture confidence.
+    _pce_category = None
+    _pce_confidence = 0.0
+    if product_context is not None:
+        if hasattr(product_context, "product_category"):
+            _pce_category = product_context.product_category
+            _pce_confidence = product_context.context_confidence
+        elif isinstance(product_context, dict):
+            _pce_category = product_context.get("product_category")
+            _pce_confidence = product_context.get("context_confidence", 0.0)
+
+    # Categories that the Product Context Engine considers valid:
+    _valid_pce_categories = {
+        "FOOD", "COSMETIC", "AYURVEDA / AYUSH", "HEALTH / SUPPLEMENT",
+        "AGRICULTURAL", "RESEARCH / INDUSTRIAL",
+    }
+
+    if _pce_category and _pce_category in _valid_pce_categories and _pce_confidence > 0:
+        # Product Context Engine says this is a real, classifiable product.
+        # Trust it — do NOT reject with the old ecosystem gate.
+        ecosystem_relevant = True
+        ecosystem_reason = (
+            f"Product Context Engine classified as {_pce_category} "
+            f"with context confidence {_pce_confidence:.0%}."
+        )
+    else:
+        # Fallback to the old ecosystem check for safety.
+        ecosystem_relevant, ecosystem_reason = _ayurveda_ecosystem_relevance(
+            product,
+            validation,
+        )
+
+    # Stage 2: Does the retrieved evidence actually support the
+    # stated product/purpose?
     no_relevant_context = not context_candidates
 
     if not ecosystem_relevant:
@@ -7697,7 +7728,8 @@ def analyze_product(
     confidence = calculate_confidence(
         evidence_for_reasoning,
         validation_for_reasoning,
-        product=product
+        product=product,
+        product_context=product_context,
     )
 
     # Product Context Engine has the final say on relevance:
