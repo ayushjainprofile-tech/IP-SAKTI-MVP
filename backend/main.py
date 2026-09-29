@@ -3446,7 +3446,7 @@ Never convert retrieval signals into legal conclusions.
 
     try:
 
-        groq_api_key = os.getenv("GROQ_API_KEY")
+        groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_api_key:
             return normalize_llm_analysis({
                 "summary": "Groq API Key not found. Please add GROQ_API_KEY in Render environment variables."
