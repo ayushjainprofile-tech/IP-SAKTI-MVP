@@ -3422,6 +3422,12 @@ def calculate_confidence(
         level = "LOW"
         score = 0.0
 
+    # No ingredient matched in the evidence.
+    elif not ingredient_match:
+
+        level = "LOW"
+        score = 0.0
+
     # Mixed result:
     # some domains supported, some unsupported.
     elif status == "PARTIAL":
