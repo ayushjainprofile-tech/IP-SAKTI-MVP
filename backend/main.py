@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, Iterable, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -269,6 +270,16 @@ app = FastAPI(
         "Evidence-first IP / Traditional Knowledge / "
         "Access and Benefit Sharing assessment prototype."
     )
+)
+
+# The Vercel frontend calls this API cross-origin; without CORS the
+# browser blocks the request and the UI falls back to placeholder data.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -4585,6 +4596,12 @@ def calculate_confidence(
             score = 0.0
             no_relevant_context = True
             relevance_status = "OUT_OF_SCOPE"
+        elif no_relevant_context and _context_value(product_context, "relevance_status") == "RELEVANT":
+            # Product Context Engine says the product makes sense; missing
+            # purpose-specific corpus text limits confidence but never zeroes it.
+            score = max(0.0, min(0.55, score))
+            no_relevant_context = False
+            relevance_status = "RELEVANT"
         elif no_relevant_context:
             score = 0.0
             relevance_status = "NO_RELEVANT_EVIDENCE"

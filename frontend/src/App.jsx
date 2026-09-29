@@ -37,7 +37,7 @@ function toStr(val) {
 function getDomainMetrics(result, domainCode) {
   const domains = result.domains || [];
   const isIncluded = domains.includes(domainCode);
-  const confScore = result.confidence?.score || 0.82;
+  const confScore = result.confidence?.score ?? 0;
 
   if (domainCode === "TK") {
     if (isIncluded) {
@@ -64,88 +64,6 @@ function getDomainMetrics(result, domainCode) {
   }
 
   return { width: "50%", label: "Standard", color: "#6b7280" };
-}
-
-function generateLocalAnalysis(payload) {
-  const pName = payload.product_name || "Custom Formulation";
-  const pType = payload.product_type || "Ayurvedic formulation";
-  const pPurpose = payload.purpose || "Health and wellness usage";
-  const ingArr = payload.ingredients?.length > 0 ? payload.ingredients : ["Active natural components"];
-  const ingList = ingArr.join(", ");
-  const tkChoice = payload.based_on_traditional_knowledge || "Not sure";
-  const isTk = tkChoice === "Yes" || pType.toLowerCase().includes("ayurvedic") || pType.toLowerCase().includes("herbal");
-  const jurisdiction = payload.jurisdiction || "India";
-
-  // Calculate dynamic hash modifier based on product name string length & char codes
-  let nameHash = 0;
-  for (let i = 0; i < pName.length; i++) nameHash += pName.charCodeAt(i);
-  const hashFactor = (nameHash % 15) / 100; // e.g. 0.00 to 0.14 variance
-
-  // Compute dynamic confidence score
-  const rawScore = isTk ? 0.82 + hashFactor : (pType.includes("Food") ? 0.73 + hashFactor : 0.68 + hashFactor);
-  const baseScore = Math.min(0.96, Math.max(0.65, Math.round(rawScore * 100) / 100));
-
-  const domains = isTk ? ["TK", "ABS", "IP"] : (pType.includes("Cosmetic") ? ["IP", "ABS"] : ["TK", "IP"]);
-
-  return {
-    product: payload,
-    classification: {
-      label: pType,
-      product_type: pType,
-      traditional_knowledge_status: isTk ? "HIGH" : (tkChoice === "No" ? "LOW" : "MODERATE"),
-      jurisdiction: jurisdiction,
-      reasons: [
-        `Formulation "${pName}" contains specified ingredients: ${ingList}.`,
-        `Intended use "${pPurpose}" evaluated against classical prior art and regulatory categories in ${jurisdiction}.`,
-        isTk
-          ? `Product category (${pType}) and ingredients (${ingList}) closely match traditional knowledge records.`
-          : `Assessed as a general formulation requiring novelty and inventive step verification.`
-      ]
-    },
-    domains: domains,
-    confidence: {
-      score: baseScore,
-      level: baseScore >= 0.85 ? "HIGH" : (baseScore >= 0.72 ? "MEDIUM" : "MODERATE"),
-      warning: `Grounding verified for "${pName}" (${ingList}) against ${jurisdiction} biological diversity & prior art frameworks.`
-    },
-    evidence: [
-      {
-        id: `ev-${pName.toLowerCase().replace(/[^a-z0-9]/g, "")}-1`,
-        domain: isTk ? "TK" : "IP",
-        source: isTk ? "Traditional Knowledge Digital Library (TKDL)" : "Indian Patent Prior Art Index",
-        score: Math.round((baseScore * 10) * 10) / 10,
-        text: `Documented literature for (${ingList}) in relation to "${pPurpose}". Referenced in classical Ayurvedic & medicinal plant records for ${jurisdiction}.`,
-        source_url: isTk ? "https://www.tkdl.res.in" : "https://ipindia.gov.in"
-      },
-      {
-        id: `ev-${pName.toLowerCase().replace(/[^a-z0-9]/g, "")}-2`,
-        domain: "ABS",
-        source: `National Biodiversity Authority (${jurisdiction})`,
-        score: Math.round((baseScore * 8.8) * 10) / 10,
-        text: `Biological resources (${ingList}) sourced within ${jurisdiction} for commercial production of "${pName}" fall under Section 3 / Section 7 Biodiversity compliance guidelines.`,
-        source_url: "https://nbaindia.org"
-      },
-      {
-        id: `ev-${pName.toLowerCase().replace(/[^a-z0-9]/g, "")}-3`,
-        domain: "IP",
-        source: "Indian Patent Office (IPO) Guidelines",
-        score: Math.round((baseScore * 7.9) * 10) / 10,
-        text: `Section 3(p) analysis for "${pName}": Claims involving ${ingList} for ${pPurpose} must demonstrate non-obvious synergistic efficacy beyond traditional properties.`,
-        source_url: "https://ipindia.gov.in"
-      }
-    ],
-    validation: {
-      status: "EVIDENCE_FOUND",
-      supported_domains: domains,
-      unsupported_domains: [],
-      message: `Dynamic analysis completed for "${pName}" · Supported: ${domains.join(", ")}`
-    },
-    action_plan: [
-      `Perform a targeted TKDL prior-art query specifically for ${ingList} mapped to ${pPurpose}.`,
-      `File Form I / intimation with National Biodiversity Authority (NBA) if biological raw materials (${ingList}) are processed commercially.`,
-      `Review patentability claims for "${pName}" under Section 3(p) to ensure synergistic data is documented.`
-    ]
-  };
 }
 
 function generateLocalChatResponse(query, language = "en") {
@@ -282,8 +200,11 @@ function Dashboard() {
     }
 
     if (!data) {
-      // Smart instant fallback engine
-      data = generateLocalAnalysis(payload);
+      // Never show placeholder scores: confidence must come from the
+      // backend's Product Context Engine.
+      setError("Could not reach the analysis backend. Please try again in a minute (the server may be waking up).");
+      setLoading(false);
+      return;
     }
 
     setResult(data);

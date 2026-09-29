@@ -331,8 +331,19 @@ class ProductContextEngine:
                 possible_contexts = ["food/spice", "traditional knowledge", "other preparation"]
             else:
                 possible_contexts = ["food/spice", "traditional knowledge", "other preparation"]
+        known_ingredients = [x for x in ingredient_list if x in self.ontology]
+        # Nothing recognisable: no known ingredient and no use signal
+        # (e.g. random text). Form/type/jurisdiction alone mean nothing.
+        stated_use_signal = bool(
+            self._match_use(" ".join(x for x in [product_name or "", purpose or ""] if x))
+        )
+        unrecognized_input = not known_ingredients and not stated_use_signal
         if not ingredient_list:
             ambiguities.append("ingredient_not_resolved")
+        elif not known_ingredients:
+            ambiguities.append("ingredient_not_in_ontology")
+        if unrecognized_input:
+            ambiguities.append("input_not_recognized")
         if not form:
             ambiguities.append("product_form_not_resolved")
         if category == "UNKNOWN":
@@ -341,7 +352,7 @@ class ProductContextEngine:
         # Transparent heuristic confidence: ingredient match alone is deliberately weak.
         score = 0.0
         signals = 0
-        if ingredient_list:
+        if known_ingredients:
             score += 0.15
             signals += 1
         if form:
@@ -378,10 +389,16 @@ class ProductContextEngine:
         score = min(0.99, round(score, 3))
         if is_bare_ambiguous:
             score = min(score, 0.35)
+        if unrecognized_input:
+            score = min(score, 0.20)
+            relevance_reasons = relevance_reasons + [
+                "Neither the ingredients nor the intended use are recognised; "
+                "please enter real ingredient names and a clear intended use."
+            ]
         if relevance_status == "IRRELEVANT":
             score = 0.0
 
-        requires_clarification = is_bare_ambiguous or (
+        requires_clarification = is_bare_ambiguous or unrecognized_input or (
             not ingredient_list and not explicit_type and not explicit_use_signal
         )
 
