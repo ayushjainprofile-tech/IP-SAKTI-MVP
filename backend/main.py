@@ -7480,6 +7480,106 @@ def _chat_web_search(query: str, jurisdiction: str, domains: List[str]) -> Dict[
     }
 
 
+_CHAT_GREETING_RE = re.compile(
+    r"^(?:h+i+|he+y+|hel+o+|hal+o+|hola|yo|namaste|namaskar|namaskaram|pranam|"
+    r"good\s+(?:morning|afternoon|evening|night)|sat\s+sri\s+akal|salaam|salam)$"
+)
+_CHAT_THANKS_RE = re.compile(
+    r"^(?:thanks?|thank\s+you|thanku|thx|ty|dhanyavaad|dhanyavad|dhanyawad|shukriya|"
+    r"ok+|okay|cool|nice|great|bye|good\s*bye)$"
+)
+_CHAT_IDENTITY_RE = re.compile(
+    r"^(?:how\s+are\s+you|kaise\s+ho|kya\s+haal\s+hai|who\s+are\s+you|"
+    r"what\s+(?:can|do)\s+you\s+do|what\s+is\s+this|tum\s+kaun\s+ho|aap\s+kaun\s+ho|help)$"
+)
+_CHAT_FILLER = r"(?:\s+(?:there|bro|sir|madam|ji|dear|team|ip\s*-?\s*sakti|bot|ai|so|very|much|a|lot))*"
+# Devanagari greetings / thanks (compared after stripping punctuation).
+_CHAT_GREETING_NATIVE = {"नमस्ते", "नमस्कार", "प्रणाम", "हेलो", "हैलो", "हाय", "नमस्ते जी", "नमस्कार जी"}
+_CHAT_THANKS_NATIVE = {"धन्यवाद", "शुक्रिया", "आभार", "धन्यवाद जी"}
+
+_CHAT_INTRO = {
+    "en": (
+        "Hello! I'm IP-SAKTI AI. I answer questions about patents and IP, "
+        "traditional knowledge (TK), access & benefit sharing (ABS) and Ayurveda "
+        "regulations in India, using official sources. Try: \"Is an Ashwagandha "
+        "formulation patentable?\" or \"Do I need NBA approval to use neem commercially?\""
+    ),
+    "hi": (
+        "नमस्ते! मैं IP-SAKTI AI हूँ। मैं भारत में पेटेंट/IP, पारंपरिक ज्ञान (TK), "
+        "पहुँच और लाभ-साझाकरण (ABS) और आयुर्वेद नियमों पर आधिकारिक स्रोतों से जवाब देता हूँ। "
+        "पूछकर देखें: \"क्या अश्वगंधा फ़ॉर्मूलेशन पेटेंट हो सकता है?\" या "
+        "\"नीम के व्यावसायिक उपयोग के लिए क्या NBA की अनुमति चाहिए?\""
+    ),
+    "mr": (
+        "नमस्कार! मी IP-SAKTI AI आहे. मी भारतातील पेटंट/IP, पारंपारिक ज्ञान (TK), "
+        "प्रवेश आणि लाभ-वाटप (ABS) आणि आयुर्वेद नियमांबद्दल अधिकृत स्रोतांवरून उत्तरे देतो. "
+        "विचारून पाहा: \"अश्वगंधा फॉर्म्युलेशन पेटंट होऊ शकते का?\""
+    ),
+}
+_CHAT_THANKS = {
+    "en": "You're welcome! Ask me anything about IP, traditional knowledge, ABS or Ayurveda regulations.",
+    "hi": "आपका स्वागत है! IP, पारंपरिक ज्ञान, ABS या आयुर्वेद नियमों के बारे में कुछ भी पूछिए।",
+    "mr": "आपले स्वागत आहे! IP, पारंपारिक ज्ञान, ABS किंवा आयुर्वेद नियमांबद्दल काहीही विचारा.",
+}
+_CHAT_NOT_UNDERSTOOD = {
+    "en": "Sorry, I couldn't understand that. Please ask a question about patents/IP, traditional knowledge, ABS or Ayurveda regulations in India.",
+    "hi": "माफ़ कीजिए, मैं समझ नहीं पाया। कृपया भारत में पेटेंट/IP, पारंपरिक ज्ञान, ABS या आयुर्वेद नियमों के बारे में प्रश्न पूछें।",
+    "mr": "माफ करा, मला समजले नाही. कृपया भारतातील पेटंट/IP, पारंपारिक ज्ञान, ABS किंवा आयुर्वेद नियमांबद्दल प्रश्न विचारा.",
+}
+
+
+def _chat_small_talk(query: str, language: str) -> Dict[str, Any] | None:
+    """
+    Greetings, thanks and gibberish get a short reply without retrieval,
+    web search or the LLM (which would otherwise "analyse" the word "hi"
+    against the Patents Act). Returns None for real questions.
+    """
+    raw = str(query or "").strip()
+    native = re.sub(r"\s+", " ", re.sub(r"[!?.,।]", " ", raw)).strip()
+    text = re.sub(r"[^a-z0-9\s-]", " ", raw.lower())
+    text = re.sub(r"\s+", " ", text).strip()
+
+    def matches(pattern):
+        return bool(re.fullmatch(pattern.pattern[:-1] + _CHAT_FILLER + "$", text))
+
+    if native in _CHAT_GREETING_NATIVE:
+        kind, replies = "greeting", _CHAT_INTRO
+    elif native in _CHAT_THANKS_NATIVE:
+        kind, replies = "thanks", _CHAT_THANKS
+    elif re.search(r"[^\x00-\x7f]", raw):
+        return None  # Other Devanagari text — let the full pipeline handle it.
+    elif not text:
+        kind, replies = "not_understood", _CHAT_NOT_UNDERSTOOD
+    elif matches(_CHAT_GREETING_RE) or matches(_CHAT_IDENTITY_RE):
+        kind, replies = "greeting", _CHAT_INTRO
+    elif matches(_CHAT_THANKS_RE):
+        kind, replies = "thanks", _CHAT_THANKS
+    elif ProductContextEngine is not None and not ProductContextEngine().has_known_words(text):
+        kind, replies = "not_understood", _CHAT_NOT_UNDERSTOOD
+    else:
+        return None
+
+    answer = replies.get(language) or replies["en"]
+    return {
+        "answer": answer,
+        "mode": "expert",
+        "sources": [],
+        "citations": [],
+        "confidence": None,
+        "domains": [],
+        "tools_used": [],
+        "agent_trace": [f"Small talk detected ({kind}); no search needed"],
+        "needs_human_review": False,
+        "human_review": {},
+        "missing_information": [],
+        "recommended_verification": [],
+        "disclaimer": (
+            "IP-SAKTI provides evidence-grounded information and does not "
+            "provide legal advice."
+        ),
+    }
+
+
 def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en", mode: str = "expert") -> Dict[str, Any]:
 
     agent_trace: List[str] = ["Query intent identified"]
@@ -7487,6 +7587,10 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
 
     jurisdiction = str(jurisdiction or "India").strip() or "India"
     language = normalize_language_code(language)
+
+    small_talk = _chat_small_talk(query, language)
+    if small_talk is not None:
+        return small_talk
 
     pseudo_product = _build_chat_pseudo_product(query, jurisdiction)
 
