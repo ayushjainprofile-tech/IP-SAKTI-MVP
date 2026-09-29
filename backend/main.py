@@ -4644,11 +4644,26 @@ def calculate_confidence(
         no_relevant_context = True
         relevance_status = "OUT_OF_SCOPE"
     else:
-        # Normal ecosystem relevance check (fallback).
-        ecosystem_relevant, ecosystem_reason = _ayurveda_ecosystem_relevance(
-            product,
-            validation,
+        engine_status = _context_value(product_context, "relevance_status", None)
+        entity_evidence = any(
+            item.get("evidence_relevance") == "RELEVANT_EVIDENCE" for item in evidence
         )
+        if engine_status == "RELEVANT":
+            # The Product Context Engine decides relevance; the keyword
+            # check below is only a fallback.
+            ecosystem_relevant = True
+            ecosystem_reason = "Product Context Engine: " + " ".join(
+                _context_value(product_context, "relevance_reasons", []) or []
+            )
+        elif engine_status == "UNDETERMINED" and entity_evidence:
+            ecosystem_relevant = True
+            ecosystem_reason = "Retrieved evidence mentions the submitted ingredient."
+        else:
+            # Normal ecosystem relevance check (fallback).
+            ecosystem_relevant, ecosystem_reason = _ayurveda_ecosystem_relevance(
+                product,
+                validation,
+            )
 
         # Stage 2: Does the retrieved evidence actually support the
         # stated product/purpose?
@@ -4658,12 +4673,6 @@ def calculate_confidence(
             score = 0.0
             no_relevant_context = True
             relevance_status = "OUT_OF_SCOPE"
-        elif no_relevant_context and _context_value(product_context, "relevance_status") == "RELEVANT":
-            # Product Context Engine says the product makes sense; missing
-            # purpose-specific corpus text limits confidence but never zeroes it.
-            score = max(0.0, min(0.55, score))
-            no_relevant_context = False
-            relevance_status = "RELEVANT"
         elif no_relevant_context:
             score = 0.0
             relevance_status = "NO_RELEVANT_EVIDENCE"
@@ -5195,6 +5204,13 @@ def sanitize_evidence(
             "supported_domains":
                 item.get(
                     "supported_domains",
+                    []
+                ),
+
+            # Strict evidence gate: which ingredient name this chunk mentions.
+            "entity_matches":
+                item.get(
+                    "entity_matches",
                     []
                 ),
 
@@ -7816,6 +7832,103 @@ def agentic_research_endpoint(request: AgenticResearchRequest):
 
 
 # =========================================================
+# STRICT EVIDENCE GATE (entity match)
+# =========================================================
+# A retrieved chunk counts as evidence only if it mentions the submitted
+# ingredient itself. "latent defect" in the Patents Act is a search hit for
+# "latent", not evidence for it; a generic Act chunk is not evidence for
+# neem. Search hits are discarded, never scored.
+
+def _gate_norm(text):
+    return re.sub(r"[^a-z0-9\u0900-\u097f]+", " ", str(text or "").lower()).strip()
+
+
+def _entity_terms(product_context):
+    """Names evidence must mention: every name of each verified ingredient,
+    and the identity of possible / unknown-traditional ingredients."""
+    engine = ProductContextEngine() if ProductContextEngine is not None else None
+    terms = []
+    for a in _context_value(product_context, "ingredient_assessments", []) or []:
+        cls = a.get("ingredient_class")
+        if cls == "VERIFIED_INGREDIENT" and engine is not None:
+            record = engine.ontology.get(a.get("canonical")) or {}
+            if record.get("in_scope") is False:
+                continue
+            names = [
+                a.get("canonical"), *record.get("common_names", []),
+                *record.get("regional_names", []), *record.get("scientific_names", []),
+            ]
+        elif cls in {"POSSIBLE_INGREDIENT", "UNKNOWN_TRADITIONAL_INGREDIENT"}:
+            names = [a.get("ingredient_identity")]
+        else:
+            continue
+        for name in names:
+            term = _gate_norm(name)
+            if len(term) >= 3 and term not in terms:
+                terms.append(term)
+    return terms
+
+
+def _matched_entity_terms(text, terms):
+    norm = _gate_norm(text)
+    return [
+        term for term in terms
+        if re.search(rf"(?<![a-z0-9\u0900-\u097f]){re.escape(term)}s?(?![a-z0-9\u0900-\u097f])", norm)
+    ]
+
+
+def _entity_corpus_evidence(terms, domains, exclude_ids, limit):
+    """Corpus chunks that mention the entity but retrieval did not return."""
+    found = []
+    if not terms or limit <= 0:
+        return found
+    for item in load_corpus():
+        text = str(item.get("page_content") or item.get("text") or "")
+        hits = _matched_entity_terms(text, terms)
+        meta = item.get("metadata") or {}
+        domain = str(item.get("domain") or meta.get("domain") or "").upper()
+        if not hits or item.get("id") in exclude_ids or domain not in domains:
+            continue
+        found.append({
+            "id": item.get("id"),
+            "domain": domain,
+            "source": item.get("source") or meta.get("filename") or "Unknown source",
+            "page": meta.get("page"),
+            "chunk": meta.get("chunk"),
+            "retrieval_type": "ENTITY_MATCH",
+            "similarity": None,
+            "score": 5.0,
+            "evidence_quality": 0.5,
+            "evidence_basis": ["entity_mention"],
+            "matched_terms": hits,
+            "ingredient_matches": hits,
+            "ingredient_evidence_is_supporting_only": False,
+            "domain_matches": {domain: hits},
+            "supported_domains": [domain],
+            "text": text[:1800],
+        })
+        if len(found) >= limit:
+            break
+    return found
+
+
+def _apply_entity_gate(evidence, terms, domains, add_corpus_matches=True):
+    kept, discarded = [], 0
+    for item in evidence:
+        hits = _matched_entity_terms(item.get("text") or item.get("evidence_text"), terms)
+        if hits:
+            kept.append({**item, "entity_matches": hits, "evidence_relevance": "RELEVANT_EVIDENCE"})
+        else:
+            discarded += 1
+    if add_corpus_matches:
+        for item in _entity_corpus_evidence(
+            terms, domains, {x.get("id") for x in kept}, max(0, TOP_K - len(kept))
+        ):
+            kept.append({**item, "entity_matches": item["matched_terms"], "evidence_relevance": "RELEVANT_EVIDENCE"})
+    return kept, discarded
+
+
+# =========================================================
 # MAIN ANALYZE ENDPOINT
 # =========================================================
 
@@ -7971,6 +8084,16 @@ def analyze_product(
         product=product,
     )
 
+    evidence_gate = None
+    if product_context is not None:
+        entity_terms = _entity_terms(product_context)
+        evidence, discarded = _apply_entity_gate(evidence, entity_terms, domains)
+        evidence_gate = {
+            "entity_terms": entity_terms[:20],
+            "search_hits_discarded": discarded,
+            "relevant_evidence_count": len(evidence),
+        }
+
     logger.info(
         "Product: %s",
         product.product_name
@@ -8010,6 +8133,23 @@ def analyze_product(
         domains
     )
 
+    if evidence_gate is not None and not evidence:
+        names = ", ".join(f"'{x}'" for x in evidence_gate["entity_terms"][:3])
+        validation = {
+            **validation,
+            "status": "NO_RELEVANT_EVIDENCE",
+            "message": (
+                f"No document in the corpus mentions {names}. "
+                if names else
+                "No ingredient could be identified, so no document can be evidence. "
+            ) + (
+                f"{evidence_gate['search_hits_discarded']} search hit(s) that only "
+                "matched other words were discarded."
+            ),
+            "supported_domains": [],
+            "unsupported_domains": list(domains),
+        }
+
     logger.info(
         "Validation status: %s",
         validation.get(
@@ -8046,6 +8186,13 @@ def analyze_product(
         domains,
         product.ingredients
     )
+
+    if evidence_gate is not None:
+        agentic_evidence, web_discarded = _apply_entity_gate(
+            agentic_evidence, evidence_gate["entity_terms"], domains, add_corpus_matches=False
+        )
+        evidence_gate["search_hits_discarded"] += web_discarded
+        evidence_gate["relevant_evidence_count"] += len(agentic_evidence)
 
     # Additive evidence fusion: original local evidence is untouched.
     evidence_for_reasoning = list(evidence) + agentic_evidence
@@ -8256,6 +8403,16 @@ def analyze_product(
         validation=validation
     )
 
+    if out_of_scope_reasons is None and evidence_gate is not None and not evidence_for_reasoning:
+        names = ", ".join(f"'{x}'" for x in evidence_gate["entity_terms"][:3]) or "this ingredient"
+        action_plan = [
+            f"No document in the IP-SAKTI corpus mentions {names}, so no confidence "
+            "can be given. Unrelated search hits were not counted.",
+            f"Add authoritative sources about {names} (TKDL / traditional-knowledge "
+            "records, patent documents, NBA / ABS notifications) to the corpus and analyze again.",
+            "Until then, verify the IP / TK / ABS position with a qualified professional.",
+        ]
+
     if out_of_scope_reasons is not None:
         action_plan = [
             "Check that the ingredients fit the selected product type: "
@@ -8384,6 +8541,9 @@ def analyze_product(
             "context": _context_to_dict(product_context),
             "contextual_queries": contextual_queries,
         },
+
+        "evidence_gate":
+            evidence_gate,
 
         "app_version":
             APP_VERSION,
