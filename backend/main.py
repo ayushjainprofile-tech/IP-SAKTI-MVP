@@ -3949,9 +3949,27 @@ def _common_sense_context_check(product, product_context=None):
     allowed_contexts = _type_to_context_tags.get(product_type, set())
 
     # -------------------------------------------------------
-    # ONTOLOGY-BASED COMMON SENSE CHECK (for ALL ingredients)
+    # PRIORITY: PRODUCT CONTEXT ENGINE VERDICT
     # -------------------------------------------------------
-    if ontology and allowed_contexts:
+    # product_context_engine.py already matched every ingredient's
+    # ontology contexts against the product category. When it reached a
+    # verdict, that verdict wins; the self-contained check below is only
+    # a fallback for when the engine is unavailable or undecided.
+    engine_verdict = _context_value(product_context, "relevance_status", None)
+    engine_reasons = list(_context_value(product_context, "relevance_reasons", []) or [])
+
+    if engine_verdict == "IRRELEVANT":
+        warnings.extend(engine_reasons or [
+            "The ingredients do not fit the declared product category."
+        ])
+        basis.append("Product Context Engine: ingredient-category mismatch")
+    elif engine_verdict == "RELEVANT":
+        basis.extend("Product Context Engine: " + r for r in engine_reasons)
+
+    # -------------------------------------------------------
+    # FALLBACK: ONTOLOGY-BASED COMMON SENSE CHECK (for ALL ingredients)
+    # -------------------------------------------------------
+    elif ontology and allowed_contexts:
         # Build a map: normalized alias → canonical ingredient name
         alias_map = {}
         for canonical, record in ontology.items():
@@ -4048,7 +4066,7 @@ def _common_sense_context_check(product, product_context=None):
         "status": "COHERENT",
         "score": 1.0,
         "warnings": [],
-        "basis": ["No obvious product-context contradiction detected."],
+        "basis": basis or ["No obvious product-context contradiction detected."],
     }
 
 
