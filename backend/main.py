@@ -4564,7 +4564,8 @@ def calculate_confidence(
 
     if plausibility["status"] == "PLAUSIBILITY_WARNING":
         # Ontology said the ingredient doesn't belong to this category.
-        # Score is already 0. Do NOT let the ecosystem gate override it.
+        # Force score to 0. Do NOT let the ecosystem gate override it.
+        score = 0.0
         ecosystem_relevant = False
         ecosystem_reason = "; ".join(plausibility.get("warnings", ["Ingredient-category mismatch"]))
         no_relevant_context = True
