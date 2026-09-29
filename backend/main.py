@@ -5528,43 +5528,68 @@ def translate_text(
     if not text.strip() or source_lang == target_lang:
         return text
 
-    api_key = os.getenv("SARVAM_API_KEY")
+    api_key = os.getenv("SARVAM_API_KEY", "").strip()
     if not api_key:
         logger.warning("SARVAM_API_KEY is not configured.")
         return text
 
-    # Sarvam AI language codes typically expect the -IN suffix
-    sarvam_source = source_lang + "-IN" if "-" not in source_lang else source_lang
-    sarvam_target = target_lang + "-IN" if "-" not in target_lang else target_lang
+    # Sarvam expects BCP-47 codes with the -IN suffix ("hi-IN").
+    def sarvam_code(code):
+        return code if "-" in code else f"{code}-IN"
 
-    url = "https://api.sarvam.ai/translate"
-    payload = {
-        "input": [text],
-        "source_language_code": sarvam_source,
-        "target_language_code": sarvam_target,
-        "speaker_gender": "Male",
-        "mode": "formal",
-        "model": "sarvam-translate"
-    }
-    headers = {
-        "api-subscription-key": api_key,
-        "Content-Type": "application/json"
-    }
+    # sarvam-translate:v1 accepts at most 2000 characters per request:
+    # split on paragraph / sentence boundaries.
+    limit = 1900
+    pieces, current = [], ""
+    for part in re.split(r"(?<=[.!?\n])\s+", text):
+        while len(part) > limit:
+            pieces.append(part[:limit])
+            part = part[limit:]
+        if current and len(current) + len(part) + 1 > limit:
+            pieces.append(current)
+            current = part
+        else:
+            current = f"{current} {part}".strip() if current else part
+    if current:
+        pieces.append(current)
 
+    translated = []
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        translated_list = data.get("translated_text", [])
-        
-        if translated_list and isinstance(translated_list, list):
-            return translated_list[0]
-
-        logger.warning("Sarvam AI returned no translation.")
+        for piece in pieces:
+            payload = {
+                "input": piece,
+                "source_language_code": sarvam_code(source_lang),
+                "target_language_code": sarvam_code(target_lang),
+                "model": os.getenv("SARVAM_TRANSLATE_MODEL", "sarvam-translate:v1"),
+                "mode": "formal",
+            }
+            req = Request(
+                "https://api.sarvam.ai/translate",
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={
+                    "api-subscription-key": api_key,
+                    "Content-Type": "application/json",
+                    "User-Agent": "ip-sakti-backend/1.0",
+                },
+            )
+            with urlopen(req, timeout=15) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            result = data.get("translated_text")
+            if not isinstance(result, str) or not result.strip():
+                logger.warning("Sarvam AI returned no translation.")
+                return text
+            translated.append(result)
+    except HTTPError as e:
+        logger.warning(
+            "Sarvam AI HTTP %s: %s", e.code, e.read().decode("utf-8", "replace")[:300]
+        )
+        return text
     except Exception as e:
         logger.warning("Sarvam AI fallback: %r", e)
+        return text
 
-    return text
+    return " ".join(translated)
 
 
 def _translate_value(
@@ -7642,7 +7667,16 @@ def run_agent_chat(query: str, jurisdiction: str = "India", language: str = "en"
     # 4. GROUNDED LLM REASONING (existing function — same
     #    no-invented-facts / no-invented-law rules as /api/analyze)
     # ---------------------------------------------------
-    llm_result = generate_llm_reasoning(pseudo_product, domains, combined_evidence, validation)
+    # generate_llm_reasoning only reads the first 5 items; with local chunks
+    # first, the question-matched web passages never reached the model.
+    web_first = list(web_evidence[:3])
+    llm_evidence = (
+        web_first
+        + list(local_evidence[:5 - len(web_first)])
+        + list(web_evidence[3:])
+        + list(local_evidence[5 - len(web_first):])
+    )
+    llm_result = generate_llm_reasoning(pseudo_product, domains, llm_evidence, validation)
 
     confidence = calculate_confidence(
         combined_evidence,
