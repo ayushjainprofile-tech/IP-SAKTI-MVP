@@ -527,13 +527,21 @@ def load_corpus(force_reload=False):
 # =========================================================
 
 def normalize_text(text):
+    """Normalise text for matching. Pure function; results are cached."""
 
     if text is None:
         return ""
 
-    text = str(
-        text
-    ).lower().strip()
+    return _normalize_text_str(str(text))
+
+
+# Retrieval normalises every corpus chunk for every phrase it checks
+# (>100,000 calls per request, ~7 s of a 9 s analyze locally and far more
+# on Render's shared CPU). The inputs repeat, so cache the results.
+@lru_cache(maxsize=30000)
+def _normalize_text_str(text):
+
+    text = text.lower().strip()
 
     replacements = {
 
