@@ -503,7 +503,7 @@ function Dashboard() {
                           <div className="domain-bar-item">
                             <div className="domain-bar-header">
                               <span>Traditional Knowledge (TK)</span>
-                              <span className="tag" style={{ background: tk.color }}>{tk.label}</span>
+                              <span className="tag" style={{ background: tk.color, color: "#fff" }}>{tk.label}</span>
                             </div>
                             <div className="domain-progress-track">
                               <div className="domain-progress-fill" style={{ width: tk.width, background: tk.color }}></div>
@@ -513,7 +513,7 @@ function Dashboard() {
                           <div className="domain-bar-item">
                             <div className="domain-bar-header">
                               <span>Access & Benefit Sharing (ABS)</span>
-                              <span className="tag" style={{ background: abs.color }}>{abs.label}</span>
+                              <span className="tag" style={{ background: abs.color, color: "#fff" }}>{abs.label}</span>
                             </div>
                             <div className="domain-progress-track">
                               <div className="domain-progress-fill" style={{ width: abs.width, background: abs.color }}></div>
@@ -523,7 +523,7 @@ function Dashboard() {
                           <div className="domain-bar-item">
                             <div className="domain-bar-header">
                               <span>Intellectual Property (IP)</span>
-                              <span className="tag" style={{ background: ip.color }}>{ip.label}</span>
+                              <span className="tag" style={{ background: ip.color, color: "#fff" }}>{ip.label}</span>
                             </div>
                             <div className="domain-progress-track">
                               <div className="domain-progress-fill" style={{ width: ip.width, background: ip.color }}></div>
