@@ -5,14 +5,25 @@ import Navbar from "./components/Navbar";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 
-import heroBgVideo from "../landing-page/bacground white white sheet.mp4";
+import heroBgVideo from "./white-sheet-bg.mp4";
 
 const API_ENDPOINTS = [
+  import.meta.env.VITE_API_URL,
   "http://localhost:8001",
   "http://127.0.0.1:8001",
   "http://localhost:8000",
   "http://127.0.0.1:8000",
-];
+].filter(Boolean);
+
+/* Render free tier sleeps when idle; cold start can take ~50s */
+function requestTimeout(host, localMs) {
+  return /localhost|127\.0\.0\.1/.test(host) ? localMs : 90000;
+}
+
+/* Wake the hosted backend as soon as the app loads */
+if (import.meta.env.VITE_API_URL) {
+  fetch(`${import.meta.env.VITE_API_URL}/api/health`).catch(() => {});
+}
 
 /* Safely convert any value to a renderable string */
 function toStr(val) {
@@ -23,121 +34,26 @@ function toStr(val) {
   try { return JSON.stringify(val); } catch { return String(val); }
 }
 
+/* Domain bar status comes only from backend routing + validation. */
 function getDomainMetrics(result, domainCode) {
   const domains = result.domains || [];
-  const isIncluded = domains.includes(domainCode);
-  const confScore = result.confidence?.score || 0.82;
+  const supported = result.validation?.supported_domains || [];
+  const confScore = result.confidence?.score ?? 0;
 
-  if (domainCode === "TK") {
-    if (isIncluded) {
-      const pct = Math.round(confScore * 96);
-      return { width: `${pct}%`, label: pct > 80 ? "Flagged" : "Relevant", color: "#d97706" };
-    }
-    return { width: "18%", label: "Low Risk", color: "#6b7280" };
+  if (result.validation?.status === "OUT_OF_SCOPE") {
+    return { width: "0%", label: "Out of scope", color: "#9f1239" };
   }
-
-  if (domainCode === "ABS") {
-    if (isIncluded) {
-      const pct = Math.round(confScore * 76);
-      return { width: `${pct}%`, label: pct > 60 ? "Review Required" : "Permissible", color: "#8A6421" };
-    }
-    return { width: "12%", label: "Exempt", color: "#6b7280" };
+  if (!domains.includes(domainCode)) {
+    return { width: "0%", label: "Not routed", color: "#6b7280" };
   }
-
-  if (domainCode === "IP") {
-    if (isIncluded) {
-      const pct = Math.round(confScore * 84);
-      return { width: `${pct}%`, label: pct > 70 ? "Prior Art Risk" : "Partial", color: "#3F6844" };
-    }
-    return { width: "25%", label: "Clear", color: "#3F6844" };
+  if (supported.includes(domainCode)) {
+    return { width: `${Math.round(confScore * 100)}%`, label: "Evidence found", color: "#3F6844" };
   }
-
-  return { width: "50%", label: "Standard", color: "#6b7280" };
-}
-
-function generateLocalAnalysis(payload) {
-  const pName = payload.product_name || "Custom Formulation";
-  const pType = payload.product_type || "Ayurvedic formulation";
-  const pPurpose = payload.purpose || "Health and wellness usage";
-  const ingArr = payload.ingredients?.length > 0 ? payload.ingredients : ["Active natural components"];
-  const ingList = ingArr.join(", ");
-  const tkChoice = payload.based_on_traditional_knowledge || "Not sure";
-  const isTk = tkChoice === "Yes" || pType.toLowerCase().includes("ayurvedic") || pType.toLowerCase().includes("herbal");
-  const jurisdiction = payload.jurisdiction || "India";
-
-  // Calculate dynamic hash modifier based on product name string length & char codes
-  let nameHash = 0;
-  for (let i = 0; i < pName.length; i++) nameHash += pName.charCodeAt(i);
-  const hashFactor = (nameHash % 15) / 100; // e.g. 0.00 to 0.14 variance
-
-  // Compute dynamic confidence score
-  const rawScore = isTk ? 0.82 + hashFactor : (pType.includes("Food") ? 0.73 + hashFactor : 0.68 + hashFactor);
-  const baseScore = Math.min(0.96, Math.max(0.65, Math.round(rawScore * 100) / 100));
-
-  const domains = isTk ? ["TK", "ABS", "IP"] : (pType.includes("Cosmetic") ? ["IP", "ABS"] : ["TK", "IP"]);
-
-  return {
-    product: payload,
-    classification: {
-      label: pType,
-      product_type: pType,
-      traditional_knowledge_status: isTk ? "HIGH" : (tkChoice === "No" ? "LOW" : "MODERATE"),
-      jurisdiction: jurisdiction,
-      reasons: [
-        `Formulation "${pName}" contains specified ingredients: ${ingList}.`,
-        `Intended use "${pPurpose}" evaluated against classical prior art and regulatory categories in ${jurisdiction}.`,
-        isTk
-          ? `Product category (${pType}) and ingredients (${ingList}) closely match traditional knowledge records.`
-          : `Assessed as a general formulation requiring novelty and inventive step verification.`
-      ]
-    },
-    domains: domains,
-    confidence: {
-      score: baseScore,
-      level: baseScore >= 0.85 ? "HIGH" : (baseScore >= 0.72 ? "MEDIUM" : "MODERATE"),
-      warning: `Grounding verified for "${pName}" (${ingList}) against ${jurisdiction} biological diversity & prior art frameworks.`
-    },
-    evidence: [
-      {
-        id: `ev-${pName.toLowerCase().replace(/[^a-z0-9]/g, "")}-1`,
-        domain: isTk ? "TK" : "IP",
-        source: isTk ? "Traditional Knowledge Digital Library (TKDL)" : "Indian Patent Prior Art Index",
-        score: Math.round((baseScore * 10) * 10) / 10,
-        text: `Documented literature for (${ingList}) in relation to "${pPurpose}". Referenced in classical Ayurvedic & medicinal plant records for ${jurisdiction}.`,
-        source_url: isTk ? "https://www.tkdl.res.in" : "https://ipindia.gov.in"
-      },
-      {
-        id: `ev-${pName.toLowerCase().replace(/[^a-z0-9]/g, "")}-2`,
-        domain: "ABS",
-        source: `National Biodiversity Authority (${jurisdiction})`,
-        score: Math.round((baseScore * 8.8) * 10) / 10,
-        text: `Biological resources (${ingList}) sourced within ${jurisdiction} for commercial production of "${pName}" fall under Section 3 / Section 7 Biodiversity compliance guidelines.`,
-        source_url: "https://nbaindia.org"
-      },
-      {
-        id: `ev-${pName.toLowerCase().replace(/[^a-z0-9]/g, "")}-3`,
-        domain: "IP",
-        source: "Indian Patent Office (IPO) Guidelines",
-        score: Math.round((baseScore * 7.9) * 10) / 10,
-        text: `Section 3(p) analysis for "${pName}": Claims involving ${ingList} for ${pPurpose} must demonstrate non-obvious synergistic efficacy beyond traditional properties.`,
-        source_url: "https://ipindia.gov.in"
-      }
-    ],
-    validation: {
-      status: "EVIDENCE_FOUND",
-      supported_domains: domains,
-      unsupported_domains: [],
-      message: `Dynamic analysis completed for "${pName}" · Supported: ${domains.join(", ")}`
-    },
-    action_plan: [
-      `Perform a targeted TKDL prior-art query specifically for ${ingList} mapped to ${pPurpose}.`,
-      `File Form I / intimation with National Biodiversity Authority (NBA) if biological raw materials (${ingList}) are processed commercially.`,
-      `Review patentability claims for "${pName}" under Section 3(p) to ensure synergistic data is documented.`
-    ]
-  };
+  return { width: "0%", label: "No evidence", color: "#8A6421" };
 }
 
 function Dashboard() {
+  const [language, setLanguage] = useState("en"); // "en", "hi", "mr"
   const [form, setForm] = useState({
     product_name: "Ashwa Joint Relief",
     ingredients: "Ashwagandha, Turmeric",
@@ -151,6 +67,25 @@ function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Chatbot State
+  const [chatMessages, setChatMessages] = useState([
+    {
+      role: "assistant",
+      content: language === "hi"
+        ? "नमस्ते! मैं IP-SAKTI AI हूँ। आप मुझसे IP, पारंपरिक ज्ञान (TK), ABS और पेटेंट नियमों के बारे में प्रश्न पूछ सकते हैं।"
+        : language === "mr"
+        ? "नमस्कार! मी IP-SAKTI AI आहे. तुम्ही मला IP, पारंपारिक ज्ञान (TK), ABS आणि पेटंट नियमांबद्दल प्रश्न विचारू शकता."
+        : "Hello! I am IP-SAKTI AI. Ask me any questions about IP, Traditional Knowledge, ABS, Ayurveda, or patent regulations.",
+      trace: ["System initialized", "Awaiting query"],
+      sources: []
+    }
+  ]);
+  const [chatQuery, setChatQuery] = useState("");
+  // "expert": detailed legal wording; "friendly": simple, conversational.
+  const [chatMode, setChatMode] = useState("expert");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [expandedTrace, setExpandedTrace] = useState({});
+
   function update(key, value) {
     setForm((old) => ({ ...old, [key]: value }));
   }
@@ -163,6 +98,7 @@ function Dashboard() {
 
     const payload = {
       ...form,
+      language: language,
       ingredients: form.ingredients
         .split(",")
         .map((x) => x.trim())
@@ -173,10 +109,13 @@ function Dashboard() {
     for (const host of API_ENDPOINTS) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), requestTimeout(host, 2000));
         const response = await fetch(`${host}/api/analyze`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Bypass-Tunnel-Reminder": "true"
+          },
           body: JSON.stringify(payload),
           signal: controller.signal,
         });
@@ -186,18 +125,96 @@ function Dashboard() {
           data = await response.json();
           break;
         }
+        if (response.status === 422) {
+          // Backend understood the request but rejected the input.
+          const body = await response.json().catch(() => ({}));
+          setError(toStr(body.detail?.message || "Please check the product details and try again."));
+          setLoading(false);
+          return;
+        }
       } catch (err) {
         // Fallback to next endpoint or instant smart analysis
       }
     }
 
     if (!data) {
-      // Smart instant fallback engine
-      data = generateLocalAnalysis(payload);
+      // Never show placeholder scores: confidence must come from the
+      // backend's Product Context Engine.
+      setError("Could not reach the analysis backend. Please try again in a minute (the server may be waking up).");
+      setLoading(false);
+      return;
     }
 
     setResult(data);
     setLoading(false);
+  }
+
+  async function handleChatSubmit(e) {
+    e.preventDefault();
+    const query = chatQuery.trim();
+    if (!query || chatLoading) return;
+
+    const userMsg = { role: "user", content: query };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatQuery("");
+    setChatLoading(true);
+
+    let chatData = null;
+    for (const host of API_ENDPOINTS) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), requestTimeout(host, 3000));
+        const response = await fetch(`${host}/api/agent/chat`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Bypass-Tunnel-Reminder": "true"
+          },
+          body: JSON.stringify({
+            query: query,
+            jurisdiction: form.jurisdiction || "India",
+            language: language,
+            mode: chatMode
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          chatData = await response.json();
+          break;
+        }
+      } catch (err) {
+        // Continue to next endpoint
+      }
+    }
+
+    if (!chatData) {
+      // Never invent an answer: every reply must come from the backend.
+      chatData = {
+        answer: language === "hi"
+          ? "सर्वर से संपर्क नहीं हो सका। कृपया एक मिनट बाद फिर से प्रयास करें।"
+          : language === "mr"
+          ? "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया एका मिनिटानंतर पुन्हा प्रयत्न करा."
+          : "Could not reach the IP-SAKTI server. Please try again in a minute.",
+      };
+    }
+
+    const botMsg = {
+      role: "assistant",
+      content: chatData.answer || chatData.response || "No response received.",
+      trace: chatData.agent_trace || chatData.trace || [],
+      sources: chatData.sources || chatData.citations || [],
+      mode: chatData.mode,
+      confidence: typeof chatData.confidence === "object" ? chatData.confidence?.level || "" : chatData.confidence
+    };
+
+    setChatMessages((prev) => [...prev, botMsg]);
+    setChatLoading(false);
+  }
+
+  function toggleTrace(idx) {
+    setExpandedTrace((prev) => ({ ...prev, [idx]: !prev[idx] }));
   }
 
   /* Extract a human-readable reasoning string from the backend response */
@@ -257,49 +274,71 @@ function Dashboard() {
           <div className="eyebrow">CODEHUNTERS HACKATHON MVP</div>
           <h1>IP-SAKTI</h1>
           <p>
-            Evidence-first assistant for preliminary IP, Traditional Knowledge
-            and ABS assessment.
+            {language === "hi"
+              ? "IP, पारंपरिक ज्ञान और ABS मूल्यांकन के लिए साक्ष्य-आधारित सहायक।"
+              : language === "mr"
+              ? "IP, पारंपारिक ज्ञान आणि ABS मूल्यमापनासाठी पुरावा-आधारित सहाय्यक."
+              : "Evidence-first assistant for preliminary IP, Traditional Knowledge and ABS assessment."}
           </p>
         </div>
-        <div className="architecture-pill">
-          Intake → Classify → Route → Retrieve → Verify → Act
+        <div className="hero-right-group">
+          <div className="language-selector-badge">
+            <span className="lang-icon">🌐</span>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="lang-select-input"
+            >
+              <option value="en">English</option>
+              <option value="hi">हिंदी (Hindi)</option>
+              <option value="mr">मराठी (Marathi)</option>
+            </select>
+          </div>
+          <div className="architecture-pill">
+            Intake → Classify → Route → Retrieve → Verify → Act
+          </div>
         </div>
       </header>
 
       <main className="layout">
         <section className="card">
           <div className="card-header-row">
-            <div className="card-eyebrow">ANALYSIS QUERY</div>
+            <div className="card-eyebrow">
+              {language === "hi" ? "विश्लेषण प्रश्न" : language === "mr" ? "मूल्यमापन प्रश्न" : "ANALYSIS QUERY"}
+            </div>
             <div className="card-number">01</div>
           </div>
-          <h2>1. Product Intake</h2>
+          <h2>{language === "hi" ? "1. उत्पाद की जानकारी" : language === "mr" ? "1. उत्पादनाची माहिती" : "1. Product Intake"}</h2>
           <p className="muted">
-            Start with what the user actually knows. The system should not
-            assume missing facts.
+            {language === "hi"
+              ? "उपयोगकर्ता द्वारा प्रदान की गई जानकारी से प्रारंभ करें।"
+              : language === "mr"
+              ? "वापरकर्त्याने दिलेल्या माहितीपासून सुरुवात करा."
+              : "Start with what the user actually knows. The system should not assume missing facts."}
           </p>
 
           <form onSubmit={analyze}>
-            <label>Product name</label>
+            <label>{language === "hi" ? "उत्पाद का नाम" : language === "mr" ? "उत्पादनाचे नाव" : "Product name"}</label>
             <input
               value={form.product_name}
               onChange={(e) => update("product_name", e.target.value)}
               required
             />
 
-            <label>Ingredients / components</label>
+            <label>{language === "hi" ? "सामग्री / घटक" : language === "mr" ? "घटक" : "Ingredients / components"}</label>
             <input
               value={form.ingredients}
               onChange={(e) => update("ingredients", e.target.value)}
               placeholder="Comma separated"
             />
 
-            <label>Intended use</label>
+            <label>{language === "hi" ? "उद्देश्य / उपयोग" : language === "mr" ? "उद्देश / वापर" : "Intended use"}</label>
             <textarea
               value={form.purpose}
               onChange={(e) => update("purpose", e.target.value)}
             />
 
-            <label>Product type</label>
+            <label>{language === "hi" ? "उत्पाद का प्रकार" : language === "mr" ? "उत्पादनाचा प्रकार" : "Product type"}</label>
             <select
               value={form.product_type}
               onChange={(e) => update("product_type", e.target.value)}
@@ -311,7 +350,7 @@ function Dashboard() {
               <option>Other</option>
             </select>
 
-            <label>Jurisdiction</label>
+            <label>{language === "hi" ? "क्षेत्रीय क्षेत्राधिकार" : language === "mr" ? "क्षेत्राधिकार" : "Jurisdiction"}</label>
             <select
               value={form.jurisdiction}
               onChange={(e) => update("jurisdiction", e.target.value)}
@@ -319,7 +358,7 @@ function Dashboard() {
               <option>India</option>
             </select>
 
-            <label>Based on traditional knowledge?</label>
+            <label>{language === "hi" ? "क्या यह पारंपरिक ज्ञान पर आधारित है?" : language === "mr" ? "हे पारंपारिक ज्ञानावर आधारित आहे का?" : "Based on traditional knowledge?"}</label>
             <select
               value={form.based_on_traditional_knowledge}
               onChange={(e) =>
@@ -332,7 +371,9 @@ function Dashboard() {
             </select>
 
             <button disabled={loading}>
-              {loading ? "Analyzing..." : "ANALYZE PRODUCT →"}
+              {loading
+                ? (language === "hi" ? "विश्लेषण जारी है..." : language === "mr" ? "विश्लेषण सुरू आहे..." : "Analyzing...")
+                : (language === "hi" ? "उत्पाद का विश्लेषण करें →" : language === "mr" ? "उत्पादनाचे विश्लेषण करा →" : "ANALYZE PRODUCT →")}
             </button>
           </form>
 
@@ -347,7 +388,7 @@ function Dashboard() {
                 <div className="card-number">02</div>
               </div>
               <div className="big-icon">🌿</div>
-              <h2>Your analysis will appear here</h2>
+              <h2>{language === "hi" ? "आपका विश्लेषण यहाँ दिखाई देगा" : language === "mr" ? "तुमचे विश्लेषण येथे दिसेल" : "Your analysis will appear here"}</h2>
               <p className="muted">
                 The prototype will classify the product, route it to IP/TK/ABS,
                 retrieve evidence, validate the response and create an action
@@ -416,7 +457,7 @@ function Dashboard() {
                           <div className="domain-bar-item">
                             <div className="domain-bar-header">
                               <span>Traditional Knowledge (TK)</span>
-                              <span className="tag" style={{ background: tk.color }}>{tk.label}</span>
+                              <span className="tag" style={{ background: tk.color, color: "#fff" }}>{tk.label}</span>
                             </div>
                             <div className="domain-progress-track">
                               <div className="domain-progress-fill" style={{ width: tk.width, background: tk.color }}></div>
@@ -426,7 +467,7 @@ function Dashboard() {
                           <div className="domain-bar-item">
                             <div className="domain-bar-header">
                               <span>Access & Benefit Sharing (ABS)</span>
-                              <span className="tag" style={{ background: abs.color }}>{abs.label}</span>
+                              <span className="tag" style={{ background: abs.color, color: "#fff" }}>{abs.label}</span>
                             </div>
                             <div className="domain-progress-track">
                               <div className="domain-progress-fill" style={{ width: abs.width, background: abs.color }}></div>
@@ -436,7 +477,7 @@ function Dashboard() {
                           <div className="domain-bar-item">
                             <div className="domain-bar-header">
                               <span>Intellectual Property (IP)</span>
-                              <span className="tag" style={{ background: ip.color }}>{ip.label}</span>
+                              <span className="tag" style={{ background: ip.color, color: "#fff" }}>{ip.label}</span>
                             </div>
                             <div className="domain-progress-track">
                               <div className="domain-progress-fill" style={{ width: ip.width, background: ip.color }}></div>
@@ -458,6 +499,9 @@ function Dashboard() {
                     {Math.round((result.confidence?.score || 0) * 100)}%
                   </div>
                   <strong>{toStr(result.confidence?.level || result.confidence?.label || "")}</strong>
+                  {(result.product_context_engine?.context?.relevance_reasons || []).length > 0 && (
+                    <p><strong>Product Context Engine:</strong> {result.product_context_engine.context.relevance_reasons.map(toStr).join(" ")}</p>
+                  )}
                   <p className="muted">{toStr(result.confidence?.warning || result.confidence?.meaning || "")}</p>
                 </div>
               </div>
@@ -520,14 +564,160 @@ function Dashboard() {
                   ))}
                 </ol>
               </div>
-
-              <div className="disclaimer">
-                Prototype only — not legal advice, not a patentability
-                determination, and not a substitute for qualified professional
-                review.
-              </div>
             </>
           )}
+
+          {/* 🤖 ASK IP-SAKTI AI CHATBOT SECTION (replicated from streamlit_app.py) */}
+          <div className="card chatbot-card">
+            <div className="card-header-row">
+              <div className="card-eyebrow">
+                {language === "hi" ? "एजेंटिक एआई चैट" : language === "mr" ? "एजंटिक एआय चॅट" : "AGENTIC AI ASSISTANT"}
+              </div>
+              <div className="card-number">🤖</div>
+            </div>
+            <h2>{language === "hi" ? "🤖 IP-SAKTI AI से पूछें" : language === "mr" ? "🤖 IP-SAKTI AI ला विचारा" : "🤖 Ask IP-SAKTI AI"}</h2>
+            <p className="muted">
+              {language === "hi"
+                ? "आईपी, पारंपरिक ज्ञान, एबीएस, आयुर्वेद और संबंधित कानूनों के बारे में प्रश्न पूछें।"
+                : language === "mr"
+                ? "आयपी, पारंपारिक ज्ञान, एबीएस, आयुर्वेद आणि संबंधित नियमांबद्दल प्रश्न विचारा."
+                : "Ask questions about IP, Traditional Knowledge, ABS, Ayurveda and related regulations."}
+            </p>
+
+            <div className="chat-thread">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`chat-bubble-container ${msg.role}`}>
+                  <div className={`chat-bubble ${msg.role}`}>
+                    <div className="chat-sender">
+                      {msg.role === "user" ? "👤 You" : msg.mode === "friendly" ? "😊 IP-SAKTI Helper" : "🤖 IP-SAKTI Agent"}
+                    </div>
+                    <div className="chat-content">{msg.content}</div>
+
+                    {/* Agent Execution Trace Expander */}
+                    {msg.trace && msg.trace.length > 0 && (
+                      <div className="chat-trace-box">
+                        <button
+                          type="button"
+                          className="trace-toggle-btn"
+                          onClick={() => toggleTrace(idx)}
+                        >
+                          {expandedTrace[idx] ? "▼ Hide Agent Execution Trace" : "▶ View Agent Execution Trace"}
+                        </button>
+                        {expandedTrace[idx] && (
+                          <ul className="trace-list">
+                            {msg.trace.map((step, sIdx) => (
+                              <li key={sIdx}>✓ {toStr(step)}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Sources */}
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="chat-sources-box">
+                        <div className="sources-title">📚 Sources:</div>
+                        <ul>
+                          {msg.sources.map((s, sIdx) => (
+                            <li key={sIdx}>
+                              <strong>{s.title || s.source || `Source ${sIdx + 1}`}</strong>
+                              {s.url && (
+                                <>
+                                  {" — "}
+                                  <a href={s.url} target="_blank" rel="noreferrer">
+                                    [Open Link]
+                                  </a>
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {msg.confidence && (
+                      <div className="chat-confidence-tag">
+                        🎯 Confidence: {msg.confidence}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="chat-bubble-container assistant">
+                  <div className="chat-bubble assistant loading">
+                    🤖 IP-SAKTI Agent is researching...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="chat-mode-toggle" role="group" aria-label="Answer style">
+              <button
+                type="button"
+                className={chatMode === "expert" ? "active" : ""}
+                onClick={() => setChatMode("expert")}
+                disabled={chatLoading}
+              >
+                {language === "hi" ? "🎓 विशेषज्ञ" : language === "mr" ? "🎓 तज्ज्ञ" : "🎓 Expert"}
+              </button>
+              <button
+                type="button"
+                className={chatMode === "friendly" ? "active" : ""}
+                onClick={() => setChatMode("friendly")}
+                disabled={chatLoading}
+              >
+                {language === "hi" ? "😊 आसान भाषा" : language === "mr" ? "😊 सोपी भाषा" : "😊 Simple words"}
+              </button>
+            </div>
+
+            <form onSubmit={handleChatSubmit} className="chat-input-form">
+              <input
+                type="text"
+                value={chatQuery}
+                onChange={(e) => setChatQuery(e.target.value)}
+                placeholder={
+                  language === "hi"
+                    ? "IP-SAKTI AI से पूछें... (उदा. धारा 3(p) क्या है?)"
+                    : language === "mr"
+                    ? "IP-SAKTI AI ला विचारा..."
+                    : "Ask IP-SAKTI AI... (e.g. Is Ashwagandha formulation patentable?)"
+                }
+                disabled={chatLoading}
+              />
+              <button type="submit" disabled={chatLoading || !chatQuery.trim()}>
+                {chatLoading ? "..." : "SEND →"}
+              </button>
+            </form>
+
+            {chatMessages.length > 1 && (
+              <button
+                type="button"
+                className="clear-chat-btn"
+                onClick={() =>
+                  setChatMessages([
+                    {
+                      role: "assistant",
+                      content:
+                        language === "hi"
+                          ? "चैट रीसेट हो गई है। आप नए प्रश्न पूछ सकते हैं।"
+                          : language === "mr"
+                          ? "चॅट रीसेट झाले आहे."
+                          : "Chat cleared. Ask a new question!",
+                      trace: [],
+                      sources: []
+                    }
+                  ])
+                }
+              >
+                🗑️ Clear AI Chat
+              </button>
+            )}
+          </div>
+
+          <div className="disclaimer">
+            Prototype only — not legal advice, not a patentability determination, and not a substitute for qualified professional review.
+          </div>
         </section>
       </main>
     </div>
