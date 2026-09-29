@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import json
 import os
+import time
 import re
 import logging
 from functools import lru_cache
@@ -372,9 +373,12 @@ class ProductInput(BaseModel):
             if not value:
                 continue
 
+            # normalize_text drops non-Latin characters, so a Hindi
+            # ingredient ("हल्दी") falls back to its own text as the
+            # de-duplication key instead of being discarded.
             normalized = normalize_text(
                 value
-            )
+            ) or value.lower()
 
             if (
                 normalized
@@ -6849,7 +6853,37 @@ def _post_json(url: str, payload: Dict[str, Any], timeout: int) -> Dict[str, Any
         return json.loads(response.read().decode("utf-8"))
 
 
+_WEB_SEARCH_CACHE: Dict[Any, Any] = {}
+_WEB_SEARCH_TTL = int(os.getenv("WEB_SEARCH_CACHE_SECONDS", "21600"))  # 6 h
+
+
 def search_web(
+    query: str,
+    *,
+    domains: List[str] | None = None,
+    max_results: int = 5,
+    timeout: int = 15,
+) -> Dict[str, Any]:
+    """Tavily search with a short in-memory cache.
+
+    Tavily returns different results for the same query from call to call,
+    and for many ingredients a web result is the only evidence, so without
+    the cache the same product scored 90% on one click and 0% on the next.
+    Only successful searches are cached.
+    """
+    key = (str(query or "").strip()[:1800], tuple(domains or ()), int(max_results))
+    hit = _WEB_SEARCH_CACHE.get(key)
+    if hit and time.time() - hit[0] < _WEB_SEARCH_TTL:
+        return hit[1]
+    result = _search_web_uncached(query, domains=domains, max_results=max_results, timeout=timeout)
+    if result.get("status") == "SUCCESS":
+        if len(_WEB_SEARCH_CACHE) > 500:
+            _WEB_SEARCH_CACHE.clear()
+        _WEB_SEARCH_CACHE[key] = (time.time(), result)
+    return result
+
+
+def _search_web_uncached(
     query: str,
     *,
     domains: List[str] | None = None,
@@ -7326,6 +7360,33 @@ def _agentic_web_to_existing_evidence(web_evidence, domains, ingredients):
     return converted
 
 
+def _canonical_product(product):
+    """Copy of the product with ontology names for search and scoring.
+
+    Ingredients become canonical names ("haldi" -> "turmeric"), and a product
+    name / intended use that is only an ingredient name is replaced the
+    same way; other text is left untouched. The user's input shown in the
+    response is not changed.
+    """
+    if ProductContextEngine is None or not getattr(product, "ingredients", None):
+        return product
+    try:
+        engine = ProductContextEngine()
+        update = {}
+        canonical = engine.resolve_ingredients(product.ingredients)
+        if canonical:
+            update["ingredients"] = canonical
+        for field in ("product_name", "purpose"):
+            value = str(getattr(product, field, "") or "")
+            name = engine.normalize_ingredient(value)
+            if value and name in engine.ontology:
+                update[field] = name
+        return product.model_copy(update=update) if update else product
+    except Exception as exc:
+        logger.warning("Canonical product names failed: %r", exc)
+        return product
+
+
 def _run_agentic_stage(product, evidence, validation):
     disabled = {
         "status": "DISABLED", "research_triggered": False, "research_tasks": [],
@@ -7337,6 +7398,8 @@ def _run_agentic_stage(product, evidence, validation):
     }
     if not AGENTIC_AI_ENABLED:
         return disabled
+    # "haldi" and "turmeric" (same ingredient) run the same web research.
+    product = _canonical_product(product)
     try:
         result = run_agentic_research(product=product, existing_evidence=evidence, validation=validation)
         return result.to_dict() if hasattr(result, "to_dict") else (result if isinstance(result, dict) else disabled)
@@ -8336,7 +8399,7 @@ def analyze_product(
     confidence = calculate_confidence(
         evidence_for_reasoning,
         validation_for_reasoning,
-        product=product,
+        product=_canonical_product(product),
         product_context=product_context,
     )
 
