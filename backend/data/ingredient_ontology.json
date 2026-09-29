@@ -1,0 +1,617 @@
+{
+  "chilli": {
+    "common_names": [
+      "chili",
+      "chilli pepper",
+      "red chilli",
+      "green chilli",
+      "cayenne",
+      "capsicum"
+    ],
+    "regional_names": [
+      "mirch",
+      "lal mirch",
+      "hari mirch"
+    ],
+    "scientific_names": [
+      "Capsicum annuum",
+      "Capsicum frutescens"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "traditional knowledge",
+      "agricultural",
+      "research"
+    ]
+  },
+  "black pepper": {
+    "common_names": [
+      "pepper",
+      "peppercorn"
+    ],
+    "regional_names": [
+      "kali mirch",
+      "marich",
+      "maricha"
+    ],
+    "scientific_names": [
+      "Piper nigrum"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "ayush",
+      "traditional knowledge",
+      "supplement",
+      "agricultural"
+    ]
+  },
+  "turmeric": {
+    "common_names": [
+      "haldi powder"
+    ],
+    "regional_names": [
+      "haldi",
+      "haridra"
+    ],
+    "scientific_names": [
+      "Curcuma longa"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge",
+      "supplement",
+      "agricultural",
+      "research"
+    ]
+  },
+  "neem": {
+    "common_names": [
+      "neem leaf",
+      "neem oil",
+      "margosa"
+    ],
+    "regional_names": [
+      "nimba",
+      "nimb"
+    ],
+    "scientific_names": [
+      "Azadirachta indica"
+    ],
+    "common_product_contexts": [
+      "cosmetic",
+      "ayush",
+      "traditional knowledge",
+      "agricultural",
+      "research"
+    ]
+  },
+  "tulsi": {
+    "common_names": [
+      "holy basil",
+      "basil"
+    ],
+    "regional_names": [
+      "tulasi"
+    ],
+    "scientific_names": [
+      "Ocimum tenuiflorum",
+      "Ocimum sanctum"
+    ],
+    "common_product_contexts": [
+      "beverage",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "ashwagandha": {
+    "common_names": [
+      "indian ginseng",
+      "winter cherry"
+    ],
+    "regional_names": [
+      "asgandh"
+    ],
+    "scientific_names": [
+      "Withania somnifera"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement",
+      "research"
+    ]
+  },
+  "ginger": {
+    "common_names": [
+      "dry ginger"
+    ],
+    "regional_names": [
+      "adrak",
+      "saunth",
+      "shunthi"
+    ],
+    "scientific_names": [
+      "Zingiber officinale"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "beverage",
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "aloe vera": {
+    "common_names": [
+      "aloe"
+    ],
+    "regional_names": [
+      "ghritkumari",
+      "kumari"
+    ],
+    "scientific_names": [
+      "Aloe barbadensis",
+      "Aloe vera"
+    ],
+    "common_product_contexts": [
+      "beverage",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "amla": {
+    "common_names": [
+      "indian gooseberry"
+    ],
+    "regional_names": [
+      "amalaki",
+      "awla"
+    ],
+    "scientific_names": [
+      "Phyllanthus emblica",
+      "Emblica officinalis"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "beverage",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "brahmi": {
+    "common_names": [
+      "water hyssop"
+    ],
+    "regional_names": [
+      "jalabrahmi"
+    ],
+    "scientific_names": [
+      "Bacopa monnieri"
+    ],
+    "common_product_contexts": [
+      "cosmetic",
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "giloy": {
+    "common_names": [
+      "guduchi",
+      "heart-leaved moonseed"
+    ],
+    "regional_names": [
+      "amrita"
+    ],
+    "scientific_names": [
+      "Tinospora cordifolia"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "sandalwood": {
+    "common_names": [
+      "sandal",
+      "sandalwood oil"
+    ],
+    "regional_names": [
+      "chandan",
+      "chandana"
+    ],
+    "scientific_names": [
+      "Santalum album"
+    ],
+    "common_product_contexts": [
+      "cosmetic",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "saffron": {
+    "common_names": [],
+    "regional_names": [
+      "kesar",
+      "kumkuma"
+    ],
+    "scientific_names": [
+      "Crocus sativus"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "coconut": {
+    "common_names": [
+      "coconut oil"
+    ],
+    "regional_names": [
+      "nariyal"
+    ],
+    "scientific_names": [
+      "Cocos nucifera"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge",
+      "agricultural"
+    ]
+  },
+  "sesame": {
+    "common_names": [
+      "sesame oil",
+      "til oil"
+    ],
+    "regional_names": [
+      "til",
+      "tila"
+    ],
+    "scientific_names": [
+      "Sesamum indicum"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "mustard": {
+    "common_names": [
+      "mustard oil",
+      "mustard seed"
+    ],
+    "regional_names": [
+      "sarson",
+      "rai"
+    ],
+    "scientific_names": [
+      "Brassica juncea"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "ayush",
+      "agricultural"
+    ]
+  },
+  "cinnamon": {
+    "common_names": [],
+    "regional_names": [
+      "dalchini",
+      "twak"
+    ],
+    "scientific_names": [
+      "Cinnamomum verum",
+      "Cinnamomum zeylanicum"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "beverage",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "cardamom": {
+    "common_names": [],
+    "regional_names": [
+      "elaichi",
+      "ela"
+    ],
+    "scientific_names": [
+      "Elettaria cardamomum"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "beverage",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "clove": {
+    "common_names": [
+      "cloves"
+    ],
+    "regional_names": [
+      "laung",
+      "lavanga"
+    ],
+    "scientific_names": [
+      "Syzygium aromaticum"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "garlic": {
+    "common_names": [],
+    "regional_names": [
+      "lehsun",
+      "lasuna"
+    ],
+    "scientific_names": [
+      "Allium sativum"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "fenugreek": {
+    "common_names": [
+      "methi seeds"
+    ],
+    "regional_names": [
+      "methi"
+    ],
+    "scientific_names": [
+      "Trigonella foenum-graecum"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "moringa": {
+    "common_names": [
+      "drumstick"
+    ],
+    "regional_names": [
+      "sahjan",
+      "shigru"
+    ],
+    "scientific_names": [
+      "Moringa oleifera"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "ayush",
+      "traditional knowledge",
+      "supplement",
+      "agricultural"
+    ]
+  },
+  "shatavari": {
+    "common_names": [
+      "asparagus root"
+    ],
+    "regional_names": [],
+    "scientific_names": [
+      "Asparagus racemosus"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "triphala": {
+    "common_names": [],
+    "regional_names": [],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "multani mitti": {
+    "common_names": [
+      "fuller's earth",
+      "fullers earth"
+    ],
+    "regional_names": [],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "cosmetic",
+      "traditional knowledge"
+    ]
+  },
+  "rose": {
+    "common_names": [
+      "rose water",
+      "rose petals"
+    ],
+    "regional_names": [
+      "gulab"
+    ],
+    "scientific_names": [
+      "Rosa damascena"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "beverage",
+      "cosmetic",
+      "ayush"
+    ]
+  },
+  "honey": {
+    "common_names": [],
+    "regional_names": [
+      "shahad",
+      "madhu"
+    ],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "food/spice",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "ghee": {
+    "common_names": [
+      "clarified butter"
+    ],
+    "regional_names": [
+      "ghrita"
+    ],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "food/spice",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "licorice": {
+    "common_names": [
+      "liquorice"
+    ],
+    "regional_names": [
+      "mulethi",
+      "yashtimadhu"
+    ],
+    "scientific_names": [
+      "Glycyrrhiza glabra"
+    ],
+    "common_product_contexts": [
+      "cosmetic",
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "bhringraj": {
+    "common_names": [
+      "false daisy"
+    ],
+    "regional_names": [
+      "bhringaraj"
+    ],
+    "scientific_names": [
+      "Eclipta prostrata",
+      "Eclipta alba"
+    ],
+    "common_product_contexts": [
+      "cosmetic",
+      "ayush",
+      "traditional knowledge"
+    ]
+  },
+  "tea": {
+    "common_names": [
+      "green tea",
+      "black tea"
+    ],
+    "regional_names": [
+      "chai",
+      "chai patti"
+    ],
+    "scientific_names": [
+      "Camellia sinensis"
+    ],
+    "common_product_contexts": [
+      "beverage",
+      "cosmetic",
+      "agricultural"
+    ]
+  },
+  "plastic": {
+    "common_names": [
+      "polyethylene",
+      "polypropylene",
+      "pvc"
+    ],
+    "regional_names": [],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "industrial"
+    ],
+    "in_scope": false
+  },
+  "paraben": {
+    "common_names": [
+      "parabens",
+      "methylparaben",
+      "propylparaben"
+    ],
+    "regional_names": [],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "cosmetic",
+      "industrial"
+    ],
+    "in_scope": false
+  },
+  "petroleum jelly": {
+    "common_names": [
+      "petrolatum",
+      "mineral oil",
+      "paraffin"
+    ],
+    "regional_names": [],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "cosmetic",
+      "industrial"
+    ],
+    "in_scope": false
+  },
+  "silicone": {
+    "common_names": [
+      "dimethicone"
+    ],
+    "regional_names": [],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "cosmetic",
+      "industrial"
+    ],
+    "in_scope": false
+  },
+  "steel": {
+    "common_names": [
+      "stainless steel",
+      "iron",
+      "aluminium",
+      "aluminum"
+    ],
+    "regional_names": [],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "industrial"
+    ],
+    "in_scope": false
+  }
+}

@@ -62,6 +62,9 @@ CATEGORY_ALIASES = {
     "beauty": "COSMETIC",
     "ayush": "AYURVEDA / AYUSH",
     "ayurveda": "AYURVEDA / AYUSH",
+    "ayurvedic formulation": "AYURVEDA / AYUSH",
+    "herbal product": "AYURVEDA / AYUSH",
+    "herbal": "AYURVEDA / AYUSH",
     "supplement": "HEALTH / SUPPLEMENT",
     "health": "HEALTH / SUPPLEMENT",
     "research": "RESEARCH / INDUSTRIAL",
@@ -113,6 +116,10 @@ class ProductContext:
     ambiguities: list[str] = field(default_factory=list)
     requires_clarification: bool = False
     context_confidence: float = 0.0
+    # RELEVANT / IRRELEVANT / UNDETERMINED: does the product make sense
+    # for its ingredients and stated category?
+    relevance_status: str = "UNDETERMINED"
+    relevance_reasons: list[str] = field(default_factory=list)
     retrieval_queries: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -220,6 +227,47 @@ class ProductContextEngine:
             return "FOOD"
         return "UNKNOWN"
 
+    def _assess_relevance(
+        self,
+        ingredients: Sequence[str],
+        category: str,
+        compatible_contexts: set[str] | None,
+    ) -> tuple[str, list[str]]:
+        """Decide whether the ingredients plausibly belong to the product category.
+
+        IRRELEVANT only on a clear signal from the ontology; ingredients the
+        ontology does not know leave the result UNDETERMINED.
+        """
+        known = [x for x in ingredients if x in self.ontology]
+        if not known:
+            return "UNDETERMINED", ["No ingredient found in the ingredient ontology."]
+
+        out_of_scope = [x for x in known if self.ontology[x].get("in_scope") is False]
+        known = [x for x in known if x not in out_of_scope]
+        if not known:
+            return "IRRELEVANT", [
+                f"'{x}' is a synthetic/industrial material, outside the "
+                "Ayurveda/AYUSH/TK/IP scope." for x in out_of_scope
+            ]
+
+        if not compatible_contexts:
+            return "UNDETERMINED", [f"Product category '{category}' could not be checked against ingredient contexts."]
+
+        matching, mismatched = [], []
+        for x in known:
+            contexts = set(self.ontology[x].get("common_product_contexts", []))
+            (matching if contexts & compatible_contexts else mismatched).append(x)
+
+        if matching:
+            return "RELEVANT", [
+                f"'{x}' is commonly used in {category} products." for x in matching
+            ]
+        return "IRRELEVANT", [
+            f"'{x}' is not a known {category} ingredient (known uses: "
+            f"{', '.join(self.ontology[x].get('common_product_contexts', []))})."
+            for x in mismatched
+        ]
+
     def analyze(
         self,
         product_name: str | None = None,
@@ -257,6 +305,10 @@ class ProductContextEngine:
             "AGRICULTURAL": {"agricultural"},
             "RESEARCH / INDUSTRIAL": {"research", "industrial"},
         }
+        relevance_status, relevance_reasons = self._assess_relevance(
+            ingredient_list, category, category_map.get(category)
+        )
+
         if category in category_map:
             narrowed = [x for x in possible_contexts if x in category_map[category]]
             if narrowed:
@@ -326,6 +378,8 @@ class ProductContextEngine:
         score = min(0.99, round(score, 3))
         if is_bare_ambiguous:
             score = min(score, 0.35)
+        if relevance_status == "IRRELEVANT":
+            score = 0.0
 
         requires_clarification = is_bare_ambiguous or (
             not ingredient_list and not explicit_type and not explicit_use_signal
@@ -346,6 +400,8 @@ class ProductContextEngine:
             ambiguities=ambiguities,
             requires_clarification=requires_clarification,
             context_confidence=score,
+            relevance_status=relevance_status,
+            relevance_reasons=relevance_reasons,
         )
         context.retrieval_queries = build_contextual_queries(context)
         return context
