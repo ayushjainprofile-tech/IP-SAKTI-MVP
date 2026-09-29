@@ -4636,6 +4636,22 @@ def calculate_confidence(
         score += 0.05
 
     # ---------------------------------------------------------
+    # PRODUCT CONTEXT ENGINE CONFIDENCE BLEND
+    # ---------------------------------------------------------
+    # When Product Context Engine recognizes verified traditional herbs
+    # or classical Ayurvedic formulations (e.g. Chyawanprash, Triphala),
+    # incorporate context_confidence so classical formulations hit 80%+.
+    ctx_conf = _context_value(product_context, "context_confidence", None)
+    if ctx_conf is not None and isinstance(ctx_conf, (int, float)) and float(ctx_conf) > 0:
+        if plausibility["status"] == "COHERENT":
+            ctx_val = float(ctx_conf)
+            if ctx_val >= 0.75:
+                score = max(score, 0.25 * score + 0.75 * ctx_val)
+            elif ctx_val >= 0.50:
+                score = max(score, 0.40 * score + 0.60 * ctx_val)
+
+
+    # ---------------------------------------------------------
     # CONFIDENCE POLICY
     # ---------------------------------------------------------
     # IMPORTANT:
@@ -8167,12 +8183,18 @@ def _gradual_confidence(assessments, evidence, evidence_score):
         terms = _entity_terms({"ingredient_assessments": [a]})
         supported = any(_matched_entity_terms(e.get("text"), terms) for e in evidence or [])
         prior = PRIOR_WEIGHT * identity * fit
+        
+        # If it's a known ingredient but in the WRONG context (e.g. Chilli in Cosmetics) 
+        # and we found NO evidence for it, it must be 0%.
+        if not supported and a.get("common_sense_check") == "LOW_CONTEXT":
+            prior = 0.0
+
         score = max(prior, evidence_score * identity * fit) if supported else prior
-        if identity > 0 and fit > 0:
+        if identity >= 0.10 and fit > 0:
             valid += 1
         else:
             invalid += 1
-            score = 0.0
+            score = max(score, 0.0) # ensure it doesn't drag below 0, but it will be heavily penalized
         components.append({
             "input": a.get("input"),
             "ingredient_identity": a.get("ingredient_identity"),
@@ -8203,6 +8225,23 @@ def _gradual_confidence(assessments, evidence, evidence_score):
 def analyze_product(
     product: ProductInput
 ):
+    
+    # -----------------------------------------------------
+    # LANGUAGE NORMALIZATION (Sarvam AI Translation)
+    # Translate all input fields to English to maximize
+    # domain evidence hits and ontology matching.
+    # -----------------------------------------------------
+    if product.product_name:
+        product.product_name = translate_text(product.product_name, source_lang="hi", target_lang="en")
+    if product.purpose:
+        product.purpose = translate_text(product.purpose, source_lang="hi", target_lang="en")
+    
+    if product.ingredients:
+        translated_ingredients = []
+        for ing in product.ingredients:
+            translated_ingredients.append(translate_text(ing, source_lang="hi", target_lang="en"))
+        product.ingredients = translated_ingredients
+
 
     # Product Context Engine gate: if nothing in the input is a real
     # word or known ingredient, there is nothing to analyze.
