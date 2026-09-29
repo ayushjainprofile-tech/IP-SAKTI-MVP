@@ -3457,7 +3457,10 @@ Never convert retrieval signals into legal conclusions.
             method="POST",
             headers={
                 "Authorization": f"Bearer {groq_api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                # Groq's Cloudflare rejects the default Python-urllib
+                # User-Agent with 403 (error code 1010).
+                "User-Agent": "ip-sakti-backend/1.0",
             }
         )
 
