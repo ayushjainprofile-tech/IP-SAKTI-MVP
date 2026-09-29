@@ -665,5 +665,43 @@
       "industrial"
     ],
     "in_scope": false
+  },
+  "glycerin": {
+    "common_names": [
+      "glycerine",
+      "glycerol"
+    ],
+    "regional_names": [
+      "ग्लिसरीन"
+    ],
+    "scientific_names": [
+      "propane-1,2,3-triol"
+    ],
+    "common_product_contexts": [
+      "cosmetic",
+      "industrial",
+      "research"
+    ]
+  },
+  "almond": {
+    "common_names": [
+      "almond oil",
+      "sweet almond",
+      "badam oil"
+    ],
+    "regional_names": [
+      "badam",
+      "बादाम"
+    ],
+    "scientific_names": [
+      "Prunus dulcis",
+      "Prunus amygdalus"
+    ],
+    "common_product_contexts": [
+      "food/spice",
+      "cosmetic",
+      "ayush",
+      "traditional knowledge"
+    ]
   }
 }

@@ -7873,12 +7873,42 @@ def _entity_terms(product_context):
     return terms
 
 
+# A single-word name must appear near ingredient-context words, so the same
+# word used in another sense ("the Controller may refuse", "lead to",
+# "gold jewellery") is not counted. Multi-word names ("aloe vera",
+# "withania somnifera") are specific enough on their own.
+_INGREDIENT_CONTEXT_CUES = {
+    "extract", "extracts", "composition", "compositions", "comprising", "comprises",
+    "comprised", "containing", "contains", "plant", "plants", "herb", "herbs",
+    "herbal", "leaf", "leaves", "root", "roots", "rhizome", "seed", "seeds", "oil",
+    "oils", "powder", "paste", "juice", "bark", "flower", "flowers", "fruit",
+    "fruits", "species", "formulation", "formulations", "ingredient",
+    "ingredients", "botanical", "medicinal", "ayurveda", "ayurvedic",
+    "traditional", "tkdl", "decoction", "gum", "resin", "cosmetic", "cosmetics",
+    "skin", "hair", "cream", "soap", "lotion", "bhasma", "churna", "spice",
+    "spices", "aqueous", "alcoholic", "biological", "resource", "resources",
+}
+_CUE_WINDOW = 10
+
+
 def _matched_entity_terms(text, terms):
     norm = _gate_norm(text)
-    return [
-        term for term in terms
-        if re.search(rf"(?<![a-z0-9\u0900-\u097f]){re.escape(term)}s?(?![a-z0-9\u0900-\u097f])", norm)
-    ]
+    tokens = norm.split()
+    matched = []
+    for term in terms:
+        pattern = rf"(?<![a-z0-9\u0900-\u097f]){re.escape(term)}s?(?![a-z0-9\u0900-\u097f])"
+        if " " in term:
+            if re.search(pattern, norm):
+                matched.append(term)
+            continue
+        for i, token in enumerate(tokens):
+            if token != term and token != term + "s":
+                continue
+            window = tokens[max(0, i - _CUE_WINDOW): i + _CUE_WINDOW + 1]
+            if any(w in _INGREDIENT_CONTEXT_CUES for w in window if w != token):
+                matched.append(term)
+                break
+    return matched
 
 
 def _entity_corpus_evidence(terms, domains, exclude_ids, limit):
@@ -8412,6 +8442,34 @@ def analyze_product(
 
         validation=validation
     )
+
+    # Per-ingredient output contract (spec §15).
+    if evidence_gate is not None:
+        contract = []
+        for a in _context_value(product_context, "ingredient_assessments", []) or []:
+            terms = _entity_terms({"ingredient_assessments": [a]})
+            hits = [e for e in evidence_for_reasoning if _matched_entity_terms(e.get("text"), terms)]
+            valid = a.get("ingredient_class") not in {
+                "NON_INGREDIENT_COMMON_WORD", "FORM_WORD", "RANDOM_GARBAGE", "PRODUCT_TYPE"}
+            contract.append({
+                "ingredient_identity": a.get("ingredient_identity"),
+                "ingredient_class": a.get("ingredient_class"),
+                "ontology_match": a.get("ontology_match"),
+                "common_sense_check": a.get("common_sense_check"),
+                "retrieval_match": evidence_gate["search_hits_discarded"] > 0 or bool(hits),
+                "relevant_evidence": bool(hits) and valid,
+                "irrelevant_matches": evidence_gate["search_hits_discarded"],
+                "final_status": (
+                    "OUT_OF_SCOPE" if not valid
+                    else "RELEVANT_EVIDENCE" if hits
+                    else "UNDETERMINED" if a.get("ingredient_class") != "VERIFIED_INGREDIENT"
+                    else "NO_RELEVANT_EVIDENCE"
+                ),
+                "reason": a.get("reason"),
+            })
+        evidence_gate["ingredients"] = contract
+        evidence_gate["final_status"] = confidence.get("status")
+        evidence_gate["final_score"] = confidence.get("score")
 
     if out_of_scope_reasons is None and evidence_gate is not None and not evidence_for_reasoning:
         names = ", ".join(f"'{x}'" for x in evidence_gate["entity_terms"][:3]) or "this ingredient"
