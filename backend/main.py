@@ -3886,18 +3886,21 @@ def _evidence_context_alignment(evidence_item, product=None):
         "ingredient_only": ingredient_only,
     }
 
-def _common_sense_context_check(product):
+def _common_sense_context_check(product, product_context=None):
     """
-    Deterministic plausibility guard.
+    Deterministic plausibility guard powered by Product Context Engine.
 
-    This is NOT a medical/legal safety engine. It only detects obvious
-    product/ingredient/purpose combinations that deserve caution before
-    retrieval evidence is converted into confidence.
+    Uses the ontology from product_context_engine.py to check if the
+    user's ingredient(s) actually make sense for the declared product
+    category/purpose. This works for ALL ingredients, not just chilli.
 
-    The rule is intentionally conservative:
-    - it can LOWER confidence or request verification;
-    - it never proves that a product is unsafe;
-    - it never proves that a product is patentable/compliant/legal.
+    Examples (from ontology):
+        Chilli  → contexts: [food/spice, traditional knowledge, agricultural]
+                  So Chilli + Cosmetic = WARNING (cosmetic not in contexts)
+        Turmeric → contexts: [food/spice, cosmetic, ayush, supplement, ...]
+                  So Turmeric + Cosmetic = OK (cosmetic IS in contexts)
+        Neem     → contexts: [cosmetic, ayush, traditional knowledge, ...]
+                  So Neem + Food = WARNING (food not in contexts)
     """
     if product is None:
         return {
@@ -3907,94 +3910,115 @@ def _common_sense_context_check(product):
             "basis": [],
         }
 
-    name = normalize_text(getattr(product, "product_name", ""))
-    ingredients_text = normalize_text(
-        " ".join(getattr(product, "ingredients", []) or [])
-    )
-    purpose = normalize_text(getattr(product, "purpose", ""))
-    product_type = normalize_text(getattr(product, "product_type", ""))
-
-    combined = " ".join([
-        name, ingredients_text, purpose, product_type
-    ])
-
     warnings = []
     basis = []
 
-    # Ingredient/purpose combinations that deserve an explicit
-    # plausibility check. These are NOT determinations of harm.
-    topical_face_terms = {
-        "face", "facial", "facial_skin", "facial_care",
-        "moisturizer", "moisturizing", "skin_hydration",
-        "skin_hydration", "skin_care", "skincare"
+    # -------------------------------------------------------
+    # STEP 1: USE PRODUCT CONTEXT ENGINE (ontology-based)
+    # -------------------------------------------------------
+    # Maps product_category → allowed ontology context tags.
+    _category_to_contexts = {
+        "FOOD":                 {"food/spice", "food", "beverage"},
+        "COSMETIC":             {"cosmetic"},
+        "AYURVEDA / AYUSH":     {"ayush", "traditional knowledge"},
+        "HEALTH / SUPPLEMENT":  {"supplement"},
+        "AGRICULTURAL":         {"agricultural"},
+        "RESEARCH / INDUSTRIAL": {"research", "industrial"},
     }
-    chilli_terms = {
-        "chilli", "chili", "chilli_powder", "chili_powder",
-        "capsicum", "capsaicin"
-    }
 
-    purpose_tokens = _alignment_tokens(purpose)
-    type_tokens = _alignment_tokens(product_type)
-    combined_tokens = _alignment_tokens(combined)
+    if product_context is not None:
+        # Read from ProductContext object or dict.
+        if hasattr(product_context, "product_category"):
+            pce_category = product_context.product_category
+            pce_possible = list(product_context.possible_contexts or [])
+            pce_ambiguities = list(product_context.ambiguities or [])
+            pce_needs_clarification = product_context.requires_clarification
+            pce_ingredients = list(product_context.normalized_ingredients or [])
+        elif isinstance(product_context, dict):
+            pce_category = product_context.get("product_category", "UNKNOWN")
+            pce_possible = product_context.get("possible_contexts", [])
+            pce_ambiguities = product_context.get("ambiguities", [])
+            pce_needs_clarification = product_context.get("requires_clarification", False)
+            pce_ingredients = product_context.get("normalized_ingredients", [])
+        else:
+            pce_category = "UNKNOWN"
+            pce_possible = []
+            pce_ambiguities = []
+            pce_needs_clarification = False
+            pce_ingredients = []
 
-    is_topical_face = bool(
-        purpose_tokens & topical_face_terms
-        or type_tokens & {"cosmetic"}
-        or "face" in purpose_tokens
-        or "facial" in purpose_tokens
-        or "moisturizer" in purpose_tokens
-        or "moisturizing" in purpose_tokens
-        or "cosmetic" in purpose_tokens
-    )
-    has_chilli = any(
-        phrase_in_text(ingredients_text, term)
-        for term in chilli_terms
-    )
+        allowed_contexts = _category_to_contexts.get(pce_category, set())
 
-    if has_chilli and is_topical_face:
-        warnings.append(
-            "The ingredient and stated facial/skincare use deserve "
-            "a formulation and safety check; the system should not "
-            "assume suitability from an ingredient match alone."
-        )
-        basis.append(
-            "ingredient-purpose plausibility warning"
-        )
+        if pce_category != "UNKNOWN" and allowed_contexts and pce_possible:
+            # Check if ANY of the ingredient's possible contexts
+            # overlap with the declared product category's allowed contexts.
+            overlap = set(pce_possible) & allowed_contexts
 
-    # Obvious category conflicts. These do not mean the product is
-    # impossible; they indicate that the user should verify the
-    # classification/claim before relying on the assessment.
-    if product_type == "cosmetic":
-        medicinal_terms = {
-            "treat", "treatment", "cure", "disease", "arthritis",
-            "infection", "diabetes", "cancer", "pain_relief",
-            "joint_pain", "therapeutic"
-        }
-        if purpose_tokens & medicinal_terms:
+            if not overlap:
+                # MISMATCH: the ingredient does NOT belong to this category.
+                warnings.append(
+                    f"The ingredient(s) ({', '.join(pce_ingredients) if pce_ingredients else 'detected'}) "
+                    f"are not typically associated with the '{pce_category}' product category. "
+                    f"Known valid contexts for these ingredients: {', '.join(pce_possible)}. "
+                    f"The system cannot assume suitability from an ingredient match alone."
+                )
+                basis.append(
+                    f"ingredient-category mismatch: ingredients do not fit '{pce_category}' "
+                    f"(ontology contexts: {pce_possible})"
+                )
+
+        # Ambiguity warning: product context is unclear.
+        if pce_needs_clarification and not warnings:
             warnings.append(
-                "The stated purpose may involve a medicinal/therapeutic "
-                "claim while the selected product type is cosmetic; "
-                "verify the applicable product classification and claims."
+                "The product context is ambiguous. The intended use was not "
+                "clearly specified, so the system cannot reliably assess "
+                "the product. Please specify the intended use."
             )
-            basis.append(
-                "product-type/claim plausibility warning"
-            )
+            basis.append("product context requires clarification")
 
-    if product_type in {"food", "nutraceutical", "ayurveda_aahar"}:
-        topical_terms = {
-            "cream", "gel", "balm", "ointment", "topical",
-            "face", "facial", "skin", "shampoo"
-        }
-        if purpose_tokens & topical_terms or any(
-            phrase_in_text(name, term) for term in topical_terms
-        ):
-            warnings.append(
-                "The stated product type and intended use may not align; "
-                "verify the classification before relying on the result."
-            )
-            basis.append(
-                "product-type/use plausibility warning"
-            )
+    # -------------------------------------------------------
+    # STEP 2: FALLBACK HARDCODED CHECKS (when engine is absent)
+    # -------------------------------------------------------
+    if not warnings and product_context is None:
+        name = normalize_text(getattr(product, "product_name", ""))
+        ingredients_text = normalize_text(
+            " ".join(getattr(product, "ingredients", []) or [])
+        )
+        purpose = normalize_text(getattr(product, "purpose", ""))
+        product_type = normalize_text(getattr(product, "product_type", ""))
+
+        purpose_tokens = _alignment_tokens(purpose)
+        type_tokens = _alignment_tokens(product_type)
+
+        # Cosmetic + medicinal purpose conflict.
+        if product_type == "cosmetic":
+            medicinal_terms = {
+                "treat", "treatment", "cure", "disease", "arthritis",
+                "infection", "diabetes", "cancer", "pain_relief",
+                "joint_pain", "therapeutic"
+            }
+            if purpose_tokens & medicinal_terms:
+                warnings.append(
+                    "The stated purpose may involve a medicinal/therapeutic "
+                    "claim while the selected product type is cosmetic; "
+                    "verify the applicable product classification and claims."
+                )
+                basis.append("product-type/claim plausibility warning")
+
+        # Food + topical purpose conflict.
+        if product_type in {"food", "nutraceutical", "ayurveda_aahar"}:
+            topical_terms = {
+                "cream", "gel", "balm", "ointment", "topical",
+                "face", "facial", "skin", "shampoo"
+            }
+            if purpose_tokens & topical_terms or any(
+                phrase_in_text(name, term) for term in topical_terms
+            ):
+                warnings.append(
+                    "The stated product type and intended use may not align; "
+                    "verify the classification before relying on the result."
+                )
+                basis.append("product-type/use plausibility warning")
 
     if warnings:
         return {
@@ -4162,7 +4186,7 @@ def calculate_confidence(
         "90-95%": "Very strong, direct and well-supported evidence",
     }
 
-    plausibility = _common_sense_context_check(product)
+    plausibility = _common_sense_context_check(product, product_context=product_context)
 
     if not evidence:
         score = 0.0
