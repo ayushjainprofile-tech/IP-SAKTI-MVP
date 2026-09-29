@@ -8,7 +8,7 @@ import SignUp from "./pages/SignUp";
 import heroBgVideo from "./white-sheet-bg.mp4";
 
 const API_ENDPOINTS = [
-  "https://full-geese-hope.loca.lt",
+  "https://discolor-fretful-coronary.ngrok-free.dev",
   "http://localhost:8001",
   "http://127.0.0.1:8001",
   "http://localhost:8000",
