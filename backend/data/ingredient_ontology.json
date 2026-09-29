@@ -703,5 +703,65 @@
       "ayush",
       "traditional knowledge"
     ]
+  },
+  "gokshura": {
+    "common_names": [
+      "gokhru",
+      "gokharu",
+      "gokhuru",
+      "puncture vine",
+      "caltrop"
+    ],
+    "regional_names": [
+      "गोखरू",
+      "गोक्षुर",
+      "gokshur"
+    ],
+    "scientific_names": [
+      "Tribulus terrestris"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "guggul": {
+    "common_names": [
+      "guggulu",
+      "gugal",
+      "indian bdellium"
+    ],
+    "regional_names": [
+      "गुग्गुल",
+      "गुग्गुलु"
+    ],
+    "scientific_names": [
+      "Commiphora wightii",
+      "Commiphora mukul"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "punarnava": {
+    "common_names": [
+      "hogweed",
+      "spreading hogweed"
+    ],
+    "regional_names": [
+      "पुनर्नवा",
+      "santhi"
+    ],
+    "scientific_names": [
+      "Boerhavia diffusa"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
   }
 }

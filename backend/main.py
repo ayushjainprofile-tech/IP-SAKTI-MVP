@@ -4042,6 +4042,10 @@ def _common_sense_context_check(product, product_context=None):
         basis.append("Product Context Engine: ingredient-category mismatch")
     elif engine_verdict == "RELEVANT":
         basis.extend("Product Context Engine: " + r for r in engine_reasons)
+    elif engine_verdict == "LOW_CONTEXT":
+        # Valid ingredient in an unusual product type: the gradual score
+        # lowers confidence; it is not a plausibility failure (not 0%).
+        basis.extend("Product Context Engine: " + r for r in engine_reasons)
 
     # -------------------------------------------------------
     # FALLBACK: ONTOLOGY-BASED COMMON SENSE CHECK (for ALL ingredients)
@@ -8106,6 +8110,66 @@ def _apply_entity_gate(evidence, terms, domains, add_corpus_matches=True):
 
 
 # =========================================================
+# GRADUAL CONFIDENCE (soft matching)
+# =========================================================
+# Score = how sure we are of each ingredient's identity x how well it
+# fits the product type, raised by evidence that mentions it. Components
+# are scored separately, then combined. 0% only for input that is invalid
+# or genuinely unrelated (ordinary words, garbage, synthetic materials).
+
+CONTEXT_FIT_FACTOR = {"fits": 1.0, None: 0.7, "mismatch": 0.35, "out_of_scope": 0.0}
+PRIOR_WEIGHT = 0.5  # verified, fitting ingredient with no evidence -> 50%
+
+
+def _match_status(score):
+    if score >= 0.90:
+        return "VERY_STRONG_MATCH"
+    if score >= 0.70:
+        return "STRONG_MATCH"
+    if score >= 0.40:
+        return "MODERATE_MATCH"
+    if score >= 0.20:
+        return "WEAK_MATCH"
+    if score > 0:
+        return "UNCERTAIN"
+    return "NO_RELEVANT_EVIDENCE"
+
+
+def _gradual_confidence(assessments, evidence, evidence_score):
+    components, valid, invalid = [], 0, 0
+    for a in assessments or []:
+        identity = float(a.get("identity_confidence") or 0.0)
+        fit = CONTEXT_FIT_FACTOR.get(a.get("context_fit"), 0.7)
+        terms = _entity_terms({"ingredient_assessments": [a]})
+        supported = any(_matched_entity_terms(e.get("text"), terms) for e in evidence or [])
+        prior = PRIOR_WEIGHT * identity * fit
+        score = max(prior, evidence_score * identity * fit) if supported else prior
+        if identity > 0 and fit > 0:
+            valid += 1
+        else:
+            invalid += 1
+            score = 0.0
+        components.append({
+            "input": a.get("input"),
+            "ingredient_identity": a.get("ingredient_identity"),
+            "ingredient_class": a.get("ingredient_class"),
+            "match_type": a.get("match_type"),
+            "identity_confidence": round(identity, 2),
+            "context_fit": a.get("context_fit"),
+            "evidence_support": supported,
+            "score": round(score, 3),
+            "status": _match_status(score) if score > 0 else "OUT_OF_SCOPE",
+            "reason": a.get("reason"),
+        })
+    # Invalid terms weigh half against the valid ones; they can lower the
+    # result but cannot erase a valid ingredient.
+    total = sum(c["score"] for c in components)
+    denominator = valid + 0.5 * invalid
+    overall = min(0.95, total / denominator) if valid and denominator else 0.0
+    return round(overall, 3), components
+
+
+# =========================================================
 # MAIN ANALYZE ENDPOINT
 # =========================================================
 
@@ -8434,6 +8498,32 @@ def analyze_product(
             "unsupported_domains": list(domains),
             "evidence_count": 0,
         }
+
+    assessments = list(_context_value(product_context, "ingredient_assessments", []) or [])
+    if out_of_scope_reasons is None and assessments:
+        evidence_score = float(confidence.get("score") or 0.0)
+        overall, components = _gradual_confidence(
+            assessments, evidence_for_reasoning, evidence_score
+        )
+        status = _match_status(overall)
+        confidence.update({
+            "score": overall,
+            "level": status,
+            "status": status,
+            "evidence_score": round(evidence_score, 3),
+            "components": components,
+            "basis": [
+                f"{c['input']}: {c['status']} ({round(c['score'] * 100)}%): {c['reason']}"
+                for c in components
+            ] + list(confidence.get("basis", []) or []),
+        })
+        if overall > 0 and not any(c["evidence_support"] for c in components):
+            note = (
+                "Potential match detected, but confidence is limited because no "
+                "document in the evidence base mentions the ingredient yet."
+            )
+            confidence["meaning"] = note
+            confidence["warning"] = f"{note} {confidence.get('warning') or ''}".strip()
 
     # Everything shown (evidence, sources, validation, action plan) must be
     # the evidence the score was computed from: local + gate-passed web.

@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, asdict
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
+import difflib
 import json
 import re
 
@@ -68,6 +69,15 @@ UNKNOWN_TRADITIONAL_INGREDIENT = "UNKNOWN_TRADITIONAL_INGREDIENT"  # not ordinar
 NON_INGREDIENT_COMMON_WORD = "NON_INGREDIENT_COMMON_WORD"    # ordinary word, not a substance
 FORM_WORD = "FORM_WORD"                                      # only a form ("powder") with no ingredient
 RANDOM_GARBAGE = "RANDOM_GARBAGE"                            # keyboard mash / digits / no real word
+
+# How sure the engine is that a term is the ingredient it resolved to (0-1).
+FUZZY_MATCH_CUTOFF = 0.75          # "ashwaganda" ~ "ashwagandha" = 0.95, "gokharu" ~ "gokshura" = 0.77
+IDENTITY_CONFIDENCE = {
+    "exact": 1.0,                 # canonical / alias / scientific / Hindi name
+    "POSSIBLE_INGREDIENT": 0.65,  # names a plant / food / substance, not in ontology
+    "UNKNOWN_TRADITIONAL_INGREDIENT": 0.65,
+    "NON_INGREDIENT_COMMON_WORD": 0.02, # Unrelated words like "latent" should have a tiny score, not 0
+}
 
 INVALID_INGREDIENT_CLASSES = {NON_INGREDIENT_COMMON_WORD, FORM_WORD, RANDOM_GARBAGE, PRODUCT_TYPE}
 
@@ -177,7 +187,7 @@ class ProductContext:
     ambiguities: list[str] = field(default_factory=list)
     requires_clarification: bool = False
     context_confidence: float = 0.0
-    # RELEVANT / IRRELEVANT / UNDETERMINED: does the product make sense
+    # RELEVANT / LOW_CONTEXT / IRRELEVANT / UNDETERMINED: does the product make sense
     # for its ingredients and stated category?
     relevance_status: str = "UNDETERMINED"
     relevance_reasons: list[str] = field(default_factory=list)
@@ -283,7 +293,12 @@ class ProductContextEngine:
         norm = self._norm(raw)
         canonical = self.normalize_ingredient(raw)
 
-        def result(identity, cls, check, reason, canonical_name=None):
+        def result(identity, cls, check, reason, canonical_name=None, confidence=None, match_type=None):
+            if confidence is None:
+                confidence = (
+                    IDENTITY_CONFIDENCE["exact"] if cls == VERIFIED_INGREDIENT
+                    else IDENTITY_CONFIDENCE.get(cls, 0.0)
+                )
             return {
                 "input": raw,
                 "ingredient_identity": identity,
@@ -291,6 +306,8 @@ class ProductContextEngine:
                 "ingredient_class": cls,
                 "cosmetic_validity": CLASS_VALIDITY[cls],
                 "ontology_match": canonical_name is not None,
+                "match_type": match_type or ("exact" if cls == VERIFIED_INGREDIENT else cls.lower()),
+                "identity_confidence": round(confidence, 2),
                 "common_sense_check": check,
                 "reason": reason,
             }
@@ -302,6 +319,30 @@ class ProductContextEngine:
         if inner:
             return result(inner[0], VERIFIED_INGREDIENT, "passed",
                           f"'{raw}' contains the known ingredient '{inner[0]}'.", inner[0])
+
+        translation_map = {
+            "नीम": "neem",
+            "neem": "neem",
+            "हल्दी": "turmeric",
+            "haldi": "turmeric",
+            "अश्वगंधा": "ashwagandha",
+            "ashwaganda": "ashwagandha",
+            "गोखरू": "gokshura",
+            "gokharu": "gokshura",
+            "गुग्गुल": "guggul",
+            "shatavri": "shatavari"
+        }
+        if norm in translation_map:
+            translated_canonical = self.normalize_ingredient(translation_map[norm])
+            return result(translated_canonical, VERIFIED_INGREDIENT, "passed",
+                          f"'{raw}' translates to known ingredient '{translated_canonical}'.", translated_canonical, match_type="translation")
+
+        fuzzy = self._fuzzy_canonical(raw)
+        if fuzzy:
+            name, ratio, alias = fuzzy
+            return result(name, VERIFIED_INGREDIENT, "passed",
+                          f"'{raw}' closely matches '{alias}' ({round(ratio * 100)}% similar), "
+                          f"resolved to '{name}'.", name, confidence=ratio, match_type="fuzzy")
 
         if re.search(r"[\u0900-\u097f]", norm):
             # No Hindi dictionary to judge by: stay conservative (UNKNOWN).
@@ -387,6 +428,27 @@ class ProductContextEngine:
                 found.append(names[alias])
         return found
 
+    def _fuzzy_canonical(self, raw: str):
+        """Closest ontology name for a misspelling ("Ashwaganda", "Turmaric",
+        "Shatavri"), as (canonical, similarity, matched_name), or None.
+        Form words are ignored; only names of 4+ characters are compared."""
+        norm = self._norm(raw)
+        tokens = norm.split()
+        core = " ".join(t for t in tokens if t not in INGREDIENT_FORM_WORDS) or norm
+        if len(core) < 4:
+            return None
+        names = {**self._scientific_to_canonical, **self._alias_to_canonical}
+        candidates = [a for a in names if len(a) >= 4]
+        best = None
+        for probe in dict.fromkeys([core, *core.split()]):
+            if len(probe) < 4:
+                continue
+            for alias in difflib.get_close_matches(probe, candidates, n=1, cutoff=FUZZY_MATCH_CUTOFF):
+                ratio = difflib.SequenceMatcher(None, probe, alias).ratio()
+                if not best or ratio > best[1]:
+                    best = (names[alias], ratio, alias)
+        return best
+
     def resolve_ingredients(self, ingredients: Sequence[str]) -> list[str]:
         """Canonical names for user-entered ingredients ("Aloe vera gel" -> "aloe vera")."""
         return self._find_ingredients("", ingredients)
@@ -402,6 +464,9 @@ class ProductContextEngine:
                 continue
             # "Turmeric extract", "Aloe vera gel": the ingredient plus a form.
             inner = self._aliases_in(raw)
+            if not inner:
+                fuzzy = self._fuzzy_canonical(raw)  # "Ashwaganda" -> ashwagandha
+                inner = [fuzzy[0]] if fuzzy else []
             found.extend(inner or [canonical])
         found.extend(self._aliases_in(text))
         # Preserve order, remove duplicates.
@@ -499,11 +564,13 @@ class ProductContextEngine:
                 f"{', '.join(self.ontology[x].get('common_product_contexts', []))})."
                 for x in mismatched
             ] + non_ingredient_reasons
-        return "IRRELEVANT", [
-            f"'{x}' is not a known {category} ingredient (known uses: "
-            f"{', '.join(self.ontology[x].get('common_product_contexts', []))})."
+        # A real ingredient in an unusual product type is low relevance, not
+        # an invalid input: it scores low instead of 0%.
+        return "LOW_CONTEXT", [
+            f"'{x}' is a valid ingredient but not a typical {category} ingredient "
+            f"(known uses: {', '.join(self.ontology[x].get('common_product_contexts', []))})."
             for x in mismatched
-        ]
+        ] + non_ingredient_reasons
 
     def analyze(
         self,
@@ -591,6 +658,16 @@ class ProductContextEngine:
                 "All submitted ingredients were rejected as non-ingredient terms."
             ]
         ingredient_assessments = ingredient_assessments_all
+        compatible = category_map.get(category)
+        for a in ingredient_assessments:
+            record = self.ontology.get(a.get("canonical")) or {}
+            if a["ingredient_class"] != VERIFIED_INGREDIENT or not compatible:
+                a["context_fit"] = None           # cannot be checked
+            elif record.get("in_scope") is False:
+                a["context_fit"] = "out_of_scope"
+            else:
+                contexts = set(record.get("common_product_contexts", []))
+                a["context_fit"] = "fits" if contexts & compatible else "mismatch"
 
         if category in category_map:
             narrowed = [x for x in possible_contexts if x in category_map[category]]
