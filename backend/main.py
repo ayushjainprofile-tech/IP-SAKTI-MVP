@@ -5623,7 +5623,30 @@ def _extract_translation_text(response):
     return ""
 
 
+_TRANSLATION_CACHE = {}
+_TRANSLATION_CACHE_MAX = 5000
+
+
 def translate_text(
+    text,
+    source_lang="en",
+    target_lang="en"
+):
+    """Cached wrapper around _translate_text_uncached."""
+    if text is None:
+        return ""
+    key = (str(text), normalize_language_code(source_lang), normalize_language_code(target_lang))
+    if key in _TRANSLATION_CACHE:
+        return _TRANSLATION_CACHE[key]
+    result = _translate_text_uncached(text, source_lang, target_lang)
+    if result != key[0] or key[1] == key[2]:
+        if len(_TRANSLATION_CACHE) >= _TRANSLATION_CACHE_MAX:
+            _TRANSLATION_CACHE.clear()
+        _TRANSLATION_CACHE[key] = result
+    return result
+
+
+def _translate_text_uncached(
     text,
     source_lang="en",
     target_lang="en"
@@ -5690,7 +5713,7 @@ def translate_text(
                     "User-Agent": "ip-sakti-backend/1.0",
                 },
             )
-            with urlopen(req, timeout=15) as response:
+            with urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode("utf-8"))
             result = data.get("translated_text")
             if not isinstance(result, str) or not result.strip():
@@ -5709,10 +5732,38 @@ def translate_text(
     return " ".join(translated)
 
 
+_UNTRANSLATABLE_RE = re.compile(r"^[A-Z0-9_\-\s./:%()+]*$")
+
+
+def _needs_translation(value):
+    """Skip URLs, enum codes (VERY_STRONG_MATCH, NO, TK) and non-words."""
+    v = value.strip()
+    if len(v) < 2 or not re.search(r"[A-Za-z]", v):
+        return False
+    if v.startswith(("http://", "https://")):
+        return False
+    return not _UNTRANSLATABLE_RE.match(v)
+
+
+def _collect_strings(value, out):
+    """Gather the strings _translate_value would translate."""
+    if isinstance(value, str):
+        if _needs_translation(value):
+            out.add(value)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_strings(item, out)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if key not in _TRANSLATION_PROTECTED_KEYS:
+                _collect_strings(item, out)
+
+
 def _translate_value(
     value,
     target_lang,
-    source_lang="en"
+    source_lang="en",
+    lookup=None
 ):
     """
     Recursively translate narrative strings while preserving
@@ -5730,6 +5781,9 @@ def _translate_value(
         ):
             return value
 
+        if lookup is not None:
+            return lookup.get(value, value)
+
         return translate_text(
             value,
             source_lang,
@@ -5745,7 +5799,8 @@ def _translate_value(
             _translate_value(
                 item,
                 target_lang,
-                source_lang
+                source_lang,
+                lookup
             )
             for item in value
         ]
@@ -5756,10 +5811,31 @@ def _translate_value(
     ):
 
         translated = {}
+        protected_keys = _TRANSLATION_PROTECTED_KEYS
 
-        # Evidence/source fields remain attached to their
-        # original source and are intentionally not translated.
-        protected_keys = {
+        for key, item in value.items():
+
+            if key in protected_keys:
+
+                translated[key] = item
+
+            else:
+
+                translated[key] = _translate_value(
+                    item,
+                    target_lang,
+                    source_lang,
+                    lookup
+                )
+
+        return translated
+
+    return value
+
+
+# Evidence/source fields remain attached to their
+# original source and are intentionally not translated.
+_TRANSLATION_PROTECTED_KEYS = {
             "id",
             "source",
             "url",
@@ -5779,25 +5855,7 @@ def _translate_value(
             "unsupported_domains",
             "domains",
             "domain",
-        }
-
-        for key, item in value.items():
-
-            if key in protected_keys:
-
-                translated[key] = item
-
-            else:
-
-                translated[key] = _translate_value(
-                    item,
-                    target_lang,
-                    source_lang
-                )
-
-        return translated
-
-    return value
+}
 
 
 def translate_analysis_object(
@@ -5826,10 +5884,29 @@ def translate_analysis_object(
     ):
         return analysis
 
+    # Translate each unique string once, in parallel, instead of
+    # one sequential Sarvam call per field.
+    strings = set()
+    _collect_strings(analysis, strings)
+    lookup = {}
+    if strings:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {
+                pool.submit(translate_text, text, source_lang, target_lang): text
+                for text in strings
+            }
+            for future in as_completed(futures):
+                text = futures[future]
+                try:
+                    lookup[text] = future.result()
+                except Exception:
+                    lookup[text] = text
+
     return _translate_value(
         analysis,
         target_lang,
-        source_lang
+        source_lang,
+        lookup
     )
 
 
