@@ -945,5 +945,109 @@
       "traditional knowledge",
       "supplement"
     ]
+  },
+  "pippali": {
+    "common_names": [
+      "long pepper",
+      "indian long pepper"
+    ],
+    "regional_names": [
+      "pipli",
+      "pipal",
+      "pippli",
+      "पिप्पली"
+    ],
+    "scientific_names": [
+      "Piper longum"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement",
+      "food/spice"
+    ]
+  },
+  "mishri": {
+    "common_names": [
+      "sugar candy",
+      "rock sugar",
+      "crystal sugar"
+    ],
+    "regional_names": [
+      "misri",
+      "sita",
+      "sitopala",
+      "मिश्री"
+    ],
+    "scientific_names": [
+      "Saccharum officinarum"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "food/spice"
+    ]
+  },
+  "vanshlochan": {
+    "common_names": [
+      "bamboo manna",
+      "bamboo silica",
+      "tabasheer"
+    ],
+    "regional_names": [
+      "banslochan",
+      "vanshalochana",
+      "tvakshiri",
+      "वंशलोचन"
+    ],
+    "scientific_names": [
+      "Bambusa arundinacea"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "asafoetida": {
+    "common_names": [
+      "asafetida",
+      "devil's dung"
+    ],
+    "regional_names": [
+      "hing",
+      "hingu",
+      "heeng",
+      "हींग"
+    ],
+    "scientific_names": [
+      "Ferula asafoetida"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement",
+      "food/spice"
+    ]
+  },
+  "cumin": {
+    "common_names": [
+      "cumin seed"
+    ],
+    "regional_names": [
+      "jeera",
+      "jira",
+      "jeeraka",
+      "जीरा"
+    ],
+    "scientific_names": [
+      "Cuminum cyminum"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement",
+      "food/spice"
+    ]
   }
 }

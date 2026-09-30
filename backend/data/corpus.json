@@ -8930,5 +8930,137 @@
       "extraction_method": "OCR",
       "source_path": "data\\abs\\AmendmentBD_Rules_2025.pdf.pdf"
     }
+  },
+  {
+    "id": "tk-classical-chyawanprash",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Chyawanprash is a classical Ayurvedic Rasayana formulation documented in Charaka Samhita (Chikitsa Sthana 1) and the Ayurvedic Formulary of India (AFI Part I). Its key ingredients are Amla (Amalaki, Emblica officinalis), Ghee, Honey, Ashwagandha (Withania somnifera) and Pippali (Piper longum). It is traditionally used as an immunity booster and for rejuvenation (Rasayana). This is codified traditional knowledge of Indian traditional medicine and herbal practice. Amla, Ashwagandha and Pippali are biological resources; commercial use of these biological resources in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Chyawanprash is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Chyawanprash",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-triphala-churna",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Triphala Churna is a classical Ayurvedic formulation documented in Charaka Samhita and the Ayurvedic Formulary of India (AFI Part I). Its ingredients are Amla (Amalaki, Emblica officinalis), Haritaki (Terminalia chebula) and Bibhitaki (Terminalia bellirica) in equal parts. It is traditionally used for digestion and constipation. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Amla, Haritaki and Bibhitaki are biological resources; commercial use of these biological resources in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Triphala Churna is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Triphala Churna",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-ashwagandha-churna",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Ashwagandha Churna is a classical Ayurvedic formulation listed in the Ayurvedic Formulary of India (AFI) and the Ayurvedic Pharmacopoeia of India. Its ingredient is Ashwagandha root (Withania somnifera). It is traditionally used for stress and vitality, as a Rasayana for strength. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Ashwagandha is a biological resource; commercial use of this biological resource in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Ashwagandha Churna is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Ashwagandha Churna",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-sitopaladi-churna",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Sitopaladi Churna is a classical Ayurvedic formulation documented in Sharangdhara Samhita and the Ayurvedic Formulary of India (AFI Part I). Its ingredients are Mishri (sugar candy), Vanshlochan (Bambusa arundinacea), Pippali (Piper longum), Cardamom (Elettaria cardamomum) and Cinnamon (Cinnamomum zeylanicum). It is traditionally used for cough, cold and fever. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Vanshlochan, Pippali, Cardamom and Cinnamon are biological resources; commercial use of these biological resources in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Sitopaladi Churna is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Sitopaladi Churna",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-mahanarayan-taila",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Mahanarayan Oil (Mahanarayana Taila) is a classical Ayurvedic medicated oil documented in Bhaishajya Ratnavali and the Ayurvedic Formulary of India (AFI Part I). Its key ingredients are Ashwagandha (Withania somnifera), Shatavari (Asparagus racemosus) and Sesame oil (Tila Taila). It is traditionally used externally for joint pain, stiffness and muscle pain in vata disorders. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Ashwagandha, Shatavari and Sesame are biological resources; commercial use of these biological resources in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Mahanarayan Oil is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Mahanarayan Oil",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-kumkumadi-tailam",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Kumkumadi Tailam is a classical Ayurvedic medicated oil documented in Sahasrayogam and the Ayurvedic Formulary of India. Its key ingredients are Saffron (Kumkuma, Crocus sativus), Sandalwood (Chandana, Santalum album) and Sesame oil (Tila Taila). It is traditionally applied for skin glow, complexion and pigmentation. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Saffron, Sandalwood and Sesame are biological resources; commercial use of these biological resources in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Kumkumadi Tailam is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Kumkumadi Tailam",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-hingvashtak-churna",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Hingvashtak Churna (Hingvashtaka Churna) is a classical Ayurvedic formulation documented in Charaka Samhita (Chikitsa Sthana, Grahani) and the Ayurvedic Formulary of India (AFI Part I). Its key ingredients are Asafoetida (Hing, Ferula asafoetida), Ginger (Shunthi, Zingiber officinale), Black pepper (Maricha, Piper nigrum), Pippali (Piper longum) and Cumin (Jeeraka, Cuminum cyminum). It is traditionally used for indigestion, bloating and gas. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Asafoetida, Ginger, Black pepper, Pippali and Cumin are biological resources; commercial use of these biological resources in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Hingvashtak Churna is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Hingvashtak Churna",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-tulsi-arka",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Tulsi Arka is a classical Ayurvedic distillate (Arka Kalpana) described in Arka Prakasha and listed in the Ayurvedic Formulary of India. Its ingredient is Tulsi (Holy Basil, Ocimum sanctum / Ocimum tenuiflorum) leaf. It is traditionally used for cough and cold. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Tulsi is a biological resource; commercial use of this biological resource in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Tulsi Arka is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Tulsi Arka",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-giloy-ghan-vati",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Giloy Ghan Vati (Guduchi Ghana Vati) is a classical Ayurvedic formulation listed in the Ayurvedic Formulary of India (AFI) and the Ayurvedic Pharmacopoeia of India. Its ingredient is Giloy (Guduchi, Tinospora cordifolia) stem extract. It is traditionally used for fever and immunity. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Giloy is a biological resource; commercial use of this biological resource in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Giloy Ghan Vati is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Giloy Ghan Vati",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-brahmi-ghrita",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Brahmi Ghrita is a classical Ayurvedic medicated ghee documented in Charaka Samhita (Chikitsa Sthana, Apasmara) and the Ayurvedic Formulary of India (AFI Part I). Its key ingredients are Brahmi (Bacopa monnieri) and Ghee. It is traditionally used for memory enhancement and mental clarity. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Brahmi is a biological resource; commercial use of this biological resource in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Brahmi Ghrita is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Brahmi Ghrita",
+      "extraction_method": "CURATED"
+    }
+  },
+  {
+    "id": "tk-classical-haridra-khanda",
+    "domain": "TK",
+    "source": "Curated classical formulation monographs (AFI / Samhita summaries)",
+    "page_content": "Haridra Khanda is a classical Ayurvedic formulation documented in Bhaishajya Ratnavali and the Ayurvedic Formulary of India (AFI Part I). Its key ingredients are Turmeric (Haridra, Curcuma longa) and Ghee. It is traditionally used for skin allergy, itching and urticaria. This is codified traditional knowledge of Indian traditional medicine and herbal practice. Turmeric is a biological resource; commercial use of this biological resource in India requires access and benefit sharing (benefit sharing) under the Biological Diversity Act, 2002. Because Haridra Khanda is documented traditional knowledge, it forms prior art and cannot be claimed as a patent invention lacking novelty under Section 3(p) of the Patents Act, 1970 (intellectual property).",
+    "metadata": {
+      "filename": "classical_formulations.json",
+      "domain": "TK",
+      "product": "Haridra Khanda",
+      "extraction_method": "CURATED"
+    }
   }
 ]
