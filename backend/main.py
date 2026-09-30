@@ -4040,11 +4040,18 @@ def _common_sense_context_check(product, product_context=None):
         "ayush":                    {"ayush", "traditional knowledge"},
         "classical medicine":       {"ayush", "traditional knowledge"},
         "patent/proprietary medicine": {"ayush", "traditional knowledge"},
+        # ── NEW: herbal product variants ──────────────────────────────────
+        "herbal product":           {"ayush", "traditional knowledge"},
+        "herbal formulation":       {"ayush", "traditional knowledge"},
+        "herbal preparation":       {"ayush", "traditional knowledge"},
+        "herbal":                   {"ayush", "traditional knowledge"},
+        # ─────────────────────────────────────────────────────────────────
         "supplement":               {"supplement"},
         "nutraceutical":            {"supplement", "food/spice"},
         "agricultural":             {"agricultural"},
         "research":                 {"research"},
         "industrial":               {"industrial"},
+        # 'other' is intentionally omitted: no context gate for unknown types
     }
 
     allowed_contexts = _type_to_context_tags.get(product_type, set())
@@ -4067,9 +4074,13 @@ def _common_sense_context_check(product, product_context=None):
     elif engine_verdict == "RELEVANT":
         basis.extend("Product Context Engine: " + r for r in engine_reasons)
     elif engine_verdict == "LOW_CONTEXT":
-        # Valid ingredient in an unusual product type: the gradual score
-        # lowers confidence; it is not a plausibility failure (not 0%).
-        basis.extend("Product Context Engine: " + r for r in engine_reasons)
+        # Valid ingredient in an unusual product type.
+        # LOW_CONTEXT is a soft mismatch: the ingredient is real but not
+        # typical for this product category.  We do NOT treat this as a hard
+        # plausibility failure (score stays above 0), but we DO signal the
+        # mismatch so the downstream confidence cap of 0.35 can apply.
+        basis.extend("Product Context Engine (low context): " + r for r in engine_reasons)
+        warnings.extend(engine_reasons)
 
     # -------------------------------------------------------
     # FALLBACK: ONTOLOGY-BASED COMMON SENSE CHECK (for ALL ingredients)
@@ -4160,6 +4171,18 @@ def _common_sense_context_check(product, product_context=None):
                 basis.append("product-type/use plausibility warning")
 
     if warnings:
+        # Distinguish IRRELEVANT (hard 0) from LOW_CONTEXT (soft cap).
+        is_low_context = (
+            engine_verdict == "LOW_CONTEXT"
+            and engine_verdict != "IRRELEVANT"
+        )
+        if is_low_context:
+            return {
+                "status": "LOW_CONTEXT_WARNING",
+                "score": 0.35,
+                "warnings": warnings,
+                "basis": basis,
+            }
         return {
             "status": "PLAUSIBILITY_WARNING",
             "score": 0.45,
@@ -4675,6 +4698,12 @@ def calculate_confidence(
     if plausibility["status"] == "PLAUSIBILITY_WARNING":
         score = 0.0
 
+    # LOW_CONTEXT_WARNING: valid ingredient, wrong/unusual product type.
+    # The ingredient is real, so we do NOT return 0. We cap at 0.35 to
+    # signal "ingredient exists but context evidence is weak/unsupported".
+    if plausibility["status"] == "LOW_CONTEXT_WARNING":
+        score = min(score, 0.35)
+
     # ---------------------------------------------------------
     # TWO-STAGE RELEVANCE GATE
     # ---------------------------------------------------------
@@ -4691,6 +4720,15 @@ def calculate_confidence(
         ecosystem_reason = "; ".join(plausibility.get("warnings", ["Ingredient-category mismatch"]))
         no_relevant_context = True
         relevance_status = "OUT_OF_SCOPE"
+    elif plausibility["status"] == "LOW_CONTEXT_WARNING":
+        # Soft mismatch: ingredient is valid, but not typical for this
+        # product category.  Score is already capped at 0.35 above.
+        # Treat as ecosystem-relevant so we don't hard-zero it.
+        engine_status = _context_value(product_context, "relevance_status", None)
+        ecosystem_relevant = True
+        ecosystem_reason = "Ingredient valid but not typical for declared product category."
+        no_relevant_context = not context_candidates
+        relevance_status = "LOW_CONTEXT"
     else:
         engine_status = _context_value(product_context, "relevance_status", None)
         entity_evidence = any(
@@ -4703,9 +4741,17 @@ def calculate_confidence(
             ecosystem_reason = "Product Context Engine: " + " ".join(
                 _context_value(product_context, "relevance_reasons", []) or []
             )
-        elif engine_status == "UNDETERMINED" and entity_evidence:
+        elif engine_status in ("LOW_CONTEXT", "UNDETERMINED") and entity_evidence:
+            # LOW_CONTEXT: ingredient exists but is unusual for product type.
+            # UNDETERMINED + entity evidence: ingredient mentioned in evidence.
+            # Both are ecosystem-relevant (ingredient is real).
             ecosystem_relevant = True
             ecosystem_reason = "Retrieved evidence mentions the submitted ingredient."
+        elif engine_status == "LOW_CONTEXT":
+            # LOW_CONTEXT without entity evidence: still ecosystem-relevant
+            # (ingredient is a real substance), but score stays capped.
+            ecosystem_relevant = True
+            ecosystem_reason = "Product Context Engine: ingredient valid but context mismatch."
         else:
             # Normal ecosystem relevance check (fallback).
             ecosystem_relevant, ecosystem_reason = _ayurveda_ecosystem_relevance(
@@ -4997,6 +5043,23 @@ def calculate_confidence(
             "the requested assessment confidently."
         )
 
+    tk_evidence = [item for item in evidence if "traditional_knowledge" in (item.get("supported_domains") or [])]
+    patent_evidence = [item for item in evidence if "patent" in (item.get("supported_domains") or [])]
+    
+    def _calc_domain_score(domain_items):
+        if not domain_items:
+            return 0.0
+        avg_qual = sum(max(0.0, min(1.0, _safe_float(it.get("evidence_quality"), 0.0))) for it in domain_items) / len(domain_items)
+        return min(0.95, avg_qual + 0.1)
+
+    domain_scores = {
+        "ingredient": min(0.95, 0.4 + (0.05 * matching_ingredient_count)) if matching_ingredient_count else 0.0,
+        "product_context": _safe_float(ctx_conf, 0.0) if 'ctx_conf' in locals() and ctx_conf else 0.0,
+        "tk": round(_calc_domain_score(tk_evidence), 2),
+        "patent_ip": round(_calc_domain_score(patent_evidence), 2),
+        "overall": round(score, 2)
+    }
+
     return {
         "level": level,
         "score": round(score, 2),
@@ -5005,6 +5068,7 @@ def calculate_confidence(
         "confidence_message": confidence_message,
         "basis": basis,
         "supported_domains": supported_domains,
+        "domain_scores": domain_scores,
         "context_alignment": {
             "purpose_alignment": round(purpose_alignment, 3),
             "product_type_alignment": round(product_type_alignment, 3),
@@ -6340,7 +6404,13 @@ def build_source_records(
                 ),
 
             "url":
-                url or None,
+                url or (
+                    "https://www.tkdl.res.in" if (
+                        "tkdl" in source.lower() or 
+                        "tkdl" in str(item.get("chunk", "")).lower() or
+                        "traditional knowledge digital library" in str(item.get("chunk", "")).lower()
+                    ) else None
+                ),
 
             "citation":
                 (
