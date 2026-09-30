@@ -321,16 +321,47 @@ class ProductContextEngine:
                           f"'{raw}' contains the known ingredient '{inner[0]}'.", inner[0])
 
         translation_map = {
+            # Hindi script → canonical
             "नीम": "neem",
-            "neem": "neem",
             "हल्दी": "turmeric",
-            "haldi": "turmeric",
             "अश्वगंधा": "ashwagandha",
-            "ashwaganda": "ashwagandha",
             "गोखरू": "gokshura",
-            "gokharu": "gokshura",
             "गुग्गुल": "guggul",
-            "shatavri": "shatavari"
+            "गुग्गुलु": "guggul",
+            "पुनर्नवा": "punarnava",
+            "दशमूल": "dashmoola",
+            "दशमूला": "dashmoola",
+            "सितोपलादि": "sitopaladi",
+            "शतावरी": "shatavari",
+            "अदरक": "ginger",
+            "तुलसी": "tulsi",
+            "ब्राह्मी": "brahmi",
+            "गिलोय": "giloy",
+            "आंवला": "amla",
+            "भृंगराज": "bhringraj",
+            # Hinglish / transliteration → canonical
+            "neem": "neem",
+            "haldi": "turmeric",
+            "ashwaganda": "ashwagandha",
+            "aswagandha": "ashwagandha",
+            "asagandha": "ashwagandha",
+            "gokharu": "gokshura",
+            "gokhru": "gokshura",
+            "gokshur": "gokshura",
+            "shatavri": "shatavari",
+            "shatawari": "shatavari",
+            "dashmool": "dashmoola",
+            "dashamool": "dashmoola",
+            "dashamula": "dashmoola",
+            "dashmul": "dashmoola",
+            "sitopladi": "sitopaladi",
+            "sitapaladi": "sitopaladi",
+            "guggulu": "guggul",
+            "gugal": "guggul",
+            "triphla": "triphala",
+            "amla": "amla",
+            "amalaki": "amla",
+            "brahmi": "brahmi",
         }
         if norm in translation_map:
             translated_canonical = self.normalize_ingredient(translation_map[norm])

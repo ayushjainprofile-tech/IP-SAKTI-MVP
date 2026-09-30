@@ -1,0 +1,101 @@
+Target_Confidence,Product,Ingredients,Purpose,Category
+0%,Gaming Laptop,"Silicon, Plastic, Copper",Play video games,Electronics
+0%,Latent Powder,Latent,Hidden magic,Cosmetic
+0%,Iron Nails,"Iron, Carbon",Construction,Hardware
+0%,Smartphone Case,Polycarbonate,Protect phone,Accessories
+0%,Car Tire,"Rubber, Steel",Vehicle movement,Automotive
+0%,Office Chair,"Mesh, Foam",Sitting,Furniture
+0%,Coffee Mug,Ceramic,Drinking,Kitchenware
+0%,Plastic Bottle,PET,Store water,Packaging
+0%,Television,"Glass, Electronics",Watch shows,Electronics
+0%,Shoes,"Leather, Rubber",Walking,Apparel
+0%,Backpack,"Nylon, Zippers",Carry items,Accessories
+0%,Guitar,"Wood, Steel strings",Play music,Instruments
+0%,Bicycle,"Aluminum, Rubber",Transport,Vehicles
+0%,Sunglasses,"Plastic, Glass",Eye protection,Accessories
+0%,Wristwatch,"Steel, Quartz",Tell time,Jewelry
+0%,Scissors,Steel,Cutting,Stationery
+0%,Notebook,Paper,Writing,Stationery
+0%,Lightbulb,"Glass, Tungsten",Illumination,Electronics
+0%,Hammer,"Steel, Wood",Driving nails,Hardware
+0%,Toilet Paper,Paper,Hygiene,Household
+0%,Door Knob,Brass,Open doors,Hardware
+0%,Window Glass,Glass,Look outside,Hardware
+0%,Carpet,"Wool, Synthetic",Floor covering,Home
+0%,Sofa,"Wood, Fabric",Sitting,Furniture
+0%,Random Text,"asdfasdf, qwerqwer",Nothing,None
+20-40%,Neem Laptop,"Neem, Silicon, Plastic",Play games with neem,Electronics
+20-40%,Spicy Face Wash,"Chilli, Black Pepper",Wash face,Cosmetic
+20-40%,Turmeric Tires,"Turmeric, Rubber",Car tires,Automotive
+20-40%,Aloe Vera Computer,"Aloe vera, Aluminum",Computing,Electronics
+20-40%,Tulsi Shoes,"Tulsi, Leather",Walking,Apparel
+20-40%,Amla Chair,"Amla, Wood",Sitting,Furniture
+20-40%,Brahmi Mug,"Brahmi, Ceramic",Drinking,Kitchenware
+20-40%,Ashwagandha Bottle,"Ashwagandha, PET",Storing water,Packaging
+20-40%,Neem TV,"Neem, Glass",Watching TV,Electronics
+20-40%,Turmeric Guitar,"Turmeric, Wood",Playing music,Instruments
+20-40%,Aloe Vera Bike,"Aloe vera, Steel",Riding,Vehicles
+20-40%,Tulsi Glasses,"Tulsi, Plastic",Seeing,Accessories
+20-40%,Amla Watch,"Amla, Quartz",Timekeeping,Jewelry
+20-40%,Brahmi Scissors,"Brahmi, Steel",Cutting,Stationery
+20-40%,Ashwagandha Book,"Ashwagandha, Paper",Reading,Stationery
+20-40%,Neem Bulb,"Neem, Tungsten",Lighting,Electronics
+20-40%,Turmeric Hammer,"Turmeric, Iron",Hitting,Hardware
+20-40%,Aloe Vera Paper,"Aloe vera, Pulp",Wiping,Household
+20-40%,Tulsi Knob,"Tulsi, Brass",Opening,Hardware
+20-40%,Amla Window,"Amla, Glass",Viewing,Hardware
+20-40%,Brahmi Carpet,"Brahmi, Wool",Flooring,Home
+20-40%,Ashwagandha Sofa,"Ashwagandha, Fabric",Sitting,Furniture
+20-40%,Neem Brick,"Neem, Clay",Building,Construction
+20-40%,Turmeric Paint,"Turmeric, Acrylic",Painting walls,Home
+20-40%,Aloe Vera Cement,"Aloe vera, Limestone",Building,Construction
+60-80%,Gokshura Supplement,"Gokshura, Latent",Energy,Ayurvedic Medicine
+60-80%,Shatavri Extract,"Shatavri, Filler",Vitality,Supplement
+60-80%,Guggul Capsules,"Guggul, Gelatin",Joint health,Ayurvedic Medicine
+60-80%,Triphala Churna Mix,"Triphala, Sand",Digestion,Powder
+60-80%,Brahmi Memory Pill,"Brahmi, Plastic",Memory,Supplement
+60-80%,Neem Face Scrub,"Neem, Microplastics",Exfoliation,Cosmetic
+60-80%,Turmeric Latte Mix,"Haldi, Artificial Color",Drink,Food
+60-80%,Ashwagandha Calm,"Ashwaganda, Sugar",Stress relief,Supplement
+60-80%,Tulsi Cough Syrup,"Tulsi, High Fructose Corn Syrup",Cough,Medicine
+60-80%,Amla Hair Oil Blend,"Amla, Mineral Oil",Hair care,Cosmetic
+60-80%,Shilajit Resin Mix,"Shilajit, Wax",Strength,Ayurvedic Medicine
+60-80%,Giloy Immunity Tablets,"Giloy, Chalk",Immunity,Supplement
+60-80%,Arjuna Heart Tonic,"Arjuna, Water",Heart health,Medicine
+60-80%,Haritaki Powder Mix,"Haritaki, Dirt",Detox,Ayurvedic Medicine
+60-80%,Bibhitaki Extract,"Bibhitaki, Alcohol",Respiratory,Supplement
+60-80%,Manjistha Blood Purifier,"Manjistha, Sugar",Blood purification,Ayurvedic Medicine
+60-80%,Punarnava Liver Care,"Punarnava, Filler",Liver health,Medicine
+60-80%,Bhringraj Hair Tonic,"Bhringraj, Synthetic Perfume",Hair growth,Cosmetic
+60-80%,Kapikachhu Energy,"Kapikachhu, Caffeine",Energy,Supplement
+60-80%,Safed Musli Power,"Safed Musli, Starch",Strength,Ayurvedic Medicine
+60-80%,Yashtimadhu Soothing,"Yashtimadhu, Honey",Throat,Medicine
+60-80%,Guduchi Fever Care,"Guduchi, Paracetamol",Fever,Medicine
+60-80%,Vasaka Breath,"Vasaka, Menthol",Breathing,Supplement
+60-80%,Kutki Liver Detox,"Kutki, Binder",Liver detox,Ayurvedic Medicine
+60-80%,Chitrak Digestive,"Chitrak, Salt",Digestion,Medicine
+80-100%,Neem Skin Cream,Neem,Treat skin infections,Cosmetic
+80-100%,Turmeric Healing Paste,Turmeric,Wound healing,Ayurvedic Medicine
+80-100%,Ashwagandha Stress Relief,Ashwagandha,Reduce stress and anxiety,Ayurvedic Medicine
+80-100%,Aloe Vera Gel,Aloe vera,Moisturize skin,Cosmetic
+80-100%,Tulsi Drops,Tulsi,Boost immunity,Ayurvedic Medicine
+80-100%,Amla Juice,Amla,Improve digestion and hair,Food
+80-100%,Brahmi Brain Tonic,Brahmi,Enhance memory,Ayurvedic Medicine
+80-100%,Triphala Churna,"Amalaki, Bibhitaki, Haritaki",Digestive health,Ayurvedic Medicine
+80-100%,Shilajit Pure Resin,Shilajit,Increase strength and stamina,Ayurvedic Medicine
+80-100%,Giloy Ghanvati,Giloy,Treat fever and boost immunity,Ayurvedic Medicine
+80-100%,Arjuna Bark Powder,Arjuna,Cardiovascular health,Ayurvedic Medicine
+80-100%,Bhringraj Hair Oil,"Bhringraj, Coconut Oil",Prevent hair fall,Cosmetic
+80-100%,Manjistha Powder,Manjistha,Blood purification and skin health,Ayurvedic Medicine
+80-100%,Punarnava Extract,Punarnava,Kidney and liver support,Ayurvedic Medicine
+80-100%,Gokshura Tablets,Gokshura,Urinary tract health,Ayurvedic Medicine
+80-100%,Shatavari Granules,Shatavari,Women's health and vitality,Ayurvedic Medicine
+80-100%,Guggul Lipid Care,Guggul,Cholesterol management,Ayurvedic Medicine
+80-100%,Yashtimadhu Root Powder,Yashtimadhu,Relieve sore throat,Ayurvedic Medicine
+80-100%,Safed Musli Churna,Safed Musli,Enhance physical strength,Ayurvedic Medicine
+80-100%,Kutki Powder,Kutki,Liver detoxification,Ayurvedic Medicine
+80-100%,Chitrakadi Vati,Chitrak,Improve digestion and appetite,Ayurvedic Medicine
+80-100%,Vasaka Syrup,Vasaka,Relieve cough and asthma,Ayurvedic Medicine
+80-100%,Kapikachhu Seeds Powder,Kapikachhu,Nervous system support,Ayurvedic Medicine
+80-100%,Haridra Khand,Haridra (Turmeric),Allergy relief,Ayurvedic Medicine
+80-100%,Neem Oil,Neem,Treat dandruff and lice,Cosmetic

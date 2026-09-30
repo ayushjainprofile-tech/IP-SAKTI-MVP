@@ -1,0 +1,123 @@
+[
+  {
+    "id": "PCX-0001",
+    "text": "turmeric powder for cooking",
+    "ingredient": "turmeric",
+    "form": "powder",
+    "purpose": "cooking",
+    "product_category": "FOOD",
+    "context": "cooking",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0002",
+    "text": "turmeric face cream",
+    "ingredient": "turmeric",
+    "form": "cream",
+    "purpose": "topical facial cosmetic",
+    "product_category": "COSMETIC",
+    "context": "topical facial cosmetic",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0003",
+    "text": "turmeric milk",
+    "ingredient": "turmeric",
+    "form": "milk",
+    "purpose": "beverage/food",
+    "product_category": "FOOD",
+    "context": "beverage/food",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0004",
+    "text": "turmeric extract capsule",
+    "ingredient": "turmeric",
+    "form": "capsule",
+    "purpose": "supplement",
+    "product_category": "HEALTH / SUPPLEMENT",
+    "context": "supplement",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0005",
+    "text": "turmeric traditional preparation",
+    "ingredient": "turmeric",
+    "form": "preparation",
+    "purpose": "traditional knowledge",
+    "product_category": "AYURVEDA / AYUSH",
+    "context": "traditional knowledge",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0006",
+    "text": "ginger tea",
+    "ingredient": "ginger",
+    "form": "tea",
+    "purpose": "beverage",
+    "product_category": "FOOD",
+    "context": "beverage",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0007",
+    "text": "ginger powder for cooking",
+    "ingredient": "ginger",
+    "form": "powder",
+    "purpose": "cooking",
+    "product_category": "FOOD",
+    "context": "cooking",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0008",
+    "text": "ginger extract",
+    "ingredient": "ginger",
+    "form": "extract",
+    "purpose": "unspecified extract",
+    "product_category": "RESEARCH / INDUSTRIAL",
+    "context": "unspecified extract",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0009",
+    "text": "ginger digestive formulation",
+    "ingredient": "ginger",
+    "form": "formulation",
+    "purpose": "traditional/oral formulation",
+    "product_category": "AYURVEDA / AYUSH",
+    "context": "traditional/oral formulation",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0010",
+    "text": "ginger topical preparation",
+    "ingredient": "ginger",
+    "form": "preparation",
+    "purpose": "topical",
+    "product_category": "COSMETIC",
+    "context": "topical",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  },
+  {
+    "id": "PCX-0011",
+    "text": "chilli powder for cooking",
+    "ingredient": "chilli",
+    "form": "powder",
+    "purpose": "cooking",
+    "product_category": "FOOD",
+    "context": "cooking",
+    "is_evidence": false,
+    "source_type": "context_example_only"
+  }
+]

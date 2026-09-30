@@ -119,11 +119,15 @@
   },
   "ashwagandha": {
     "common_names": [
+      "ashwaganda",
+      "aswagandha",
       "indian ginseng",
       "winter cherry"
     ],
     "regional_names": [
       "asgandh",
+      "asagandha",
+      "asaganda",
       "अश्वगंधा",
       "असगंध"
     ],
@@ -452,10 +456,14 @@
   },
   "shatavari": {
     "common_names": [
-      "asparagus root"
+      "asparagus root",
+      "shatavri",
+      "shatawari"
     ],
     "regional_names": [
-      "शतावरी"
+      "शतावरी",
+      "शतावर",
+      "satavar"
     ],
     "scientific_names": [
       "Asparagus racemosus"
@@ -463,7 +471,8 @@
     "common_product_contexts": [
       "ayush",
       "traditional knowledge",
-      "supplement"
+      "supplement",
+      "research"
     ]
   },
   "triphala": {
@@ -666,6 +675,19 @@
     ],
     "in_scope": false
   },
+  "motor oil": {
+    "common_names": [
+      "engine oil",
+      "motor oil",
+      "lubricant"
+    ],
+    "regional_names": [],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "industrial"
+    ],
+    "in_scope": false
+  },
   "glycerin": {
     "common_names": [
       "glycerine",
@@ -760,6 +782,166 @@
     ],
     "common_product_contexts": [
       "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "dashmoola": {
+    "common_names": [
+      "dashamool",
+      "dashamula",
+      "dashmul",
+      "ten roots"
+    ],
+    "regional_names": [
+      "दशमूल",
+      "दशमूला",
+      "dashmool"
+    ],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "sitopaladi": {
+    "common_names": [
+      "sitopladi",
+      "sitopaladi churna",
+      "sitapaladi"
+    ],
+    "regional_names": [
+      "सितोपलादि",
+      "सितोपलादि चूर्ण"
+    ],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "chyawanprash": {
+    "common_names": [
+      "chyavanprash",
+      "chyavanaprasha"
+    ],
+    "regional_names": [
+      "च्यवनप्राश"
+    ],
+    "scientific_names": [],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement",
+      "food/spice"
+    ]
+  },
+  "haritaki": {
+    "common_names": [
+      "haritaki",
+      "harad",
+      "chebulic myrobalan"
+    ],
+    "regional_names": [
+      "हरड़",
+      "हरीतकी"
+    ],
+    "scientific_names": [
+      "Terminalia chebula"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "bibhitaki": {
+    "common_names": [
+      "baheda",
+      "belleric myrobalan"
+    ],
+    "regional_names": [
+      "बहेड़ा",
+      "विभीतकी"
+    ],
+    "scientific_names": [
+      "Terminalia bellirica"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "manjistha": {
+    "common_names": [
+      "manjishtha",
+      "indian madder"
+    ],
+    "regional_names": [
+      "मंजिष्ठा",
+      "मंजीठ"
+    ],
+    "scientific_names": [
+      "Rubia cordifolia"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "cosmetic",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "arjuna": {
+    "common_names": [
+      "arjun tree",
+      "arjuna bark"
+    ],
+    "regional_names": [
+      "अर्जुन"
+    ],
+    "scientific_names": [
+      "Terminalia arjuna"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "shankhpushpi": {
+    "common_names": [
+      "morning glory",
+      "sankha pushpi"
+    ],
+    "regional_names": [
+      "शंखपुष्पी"
+    ],
+    "scientific_names": [
+      "Convolvulus pluricaulis"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "traditional knowledge",
+      "supplement"
+    ]
+  },
+  "jatamansi": {
+    "common_names": [
+      "spikenard",
+      "muskroot"
+    ],
+    "regional_names": [
+      "जटामांसी"
+    ],
+    "scientific_names": [
+      "Nardostachys jatamansi"
+    ],
+    "common_product_contexts": [
+      "ayush",
+      "cosmetic",
       "traditional knowledge",
       "supplement"
     ]

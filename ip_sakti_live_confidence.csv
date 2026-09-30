@@ -1,0 +1,41 @@
+Product Name,Ingredients / Components,Intended Use,Product Type,Jurisdiction,Based on Traditional Knowledge?,Expected Confidence Score,Confidence Level,Status,Reason
+Ashwa Joint Relief,"Ashwagandha, Turmeric",Joint pain,Ayurvedic formulation,India,Yes,55%,MODERATE_MATCH,MODERATE_MATCH,'ashwagandha' is commonly used in AYURVEDA / AYUSH products. 'turmeric' is commonly used in AYURVEDA / AYUSH products.
+Ashwagandha Churna,Ashwagandha,Stress relief,Ayurvedic formulation,India,Yes,62%,MODERATE_MATCH,MODERATE_MATCH,'ashwagandha' is commonly used in AYURVEDA / AYUSH products.
+Triphala Churna,Triphala,Digestion,Ayurvedic formulation,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'triphala' is commonly used in AYURVEDA / AYUSH products.
+Shatavari Kalpa,Shatavari,Women's health,Ayurvedic formulation,India,Yes,60%,MODERATE_MATCH,MODERATE_MATCH,'shatavari' is commonly used in AYURVEDA / AYUSH products.
+Giloy Ghan Vati,Giloy,Immunity,Ayurvedic formulation,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'giloy' is commonly used in AYURVEDA / AYUSH products.
+Brahmi Vati,Brahmi,Memory support,Ayurvedic formulation,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'brahmi' is commonly used in AYURVEDA / AYUSH products.
+Tulsi Drops,Tulsi,Cough and cold,Herbal product,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'tulsi' is commonly used in AYURVEDA / AYUSH products.
+Punarnava Churna,Punarnava,Kidney health,Ayurvedic formulation,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'punarnava' is commonly used in AYURVEDA / AYUSH products.
+Gokshura Tablet,Gokshura,Urinary health,Ayurvedic formulation,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'gokshura' is commonly used in AYURVEDA / AYUSH products.
+Amla Rasayana,Amla,Rejuvenation,Ayurvedic formulation,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'amla' is commonly used in AYURVEDA / AYUSH products.
+Neem Soap,Neem,Skin cleansing,Cosmetic,India,Not sure,50%,MODERATE_MATCH,MODERATE_MATCH,'neem' is commonly used in COSMETIC products.
+Turmeric Face Cream,Turmeric,Skin glow,Cosmetic,India,No,50%,MODERATE_MATCH,MODERATE_MATCH,'turmeric' is commonly used in COSMETIC products.
+Aloe Vera Gel,Aloe vera,Skin soothing,Cosmetic,India,Not sure,75%,STRONG_MATCH,STRONG_MATCH,'aloe vera' is commonly used in COSMETIC products.
+Amla Hair Oil,"Amla, Coconut",Hair growth,Cosmetic,India,Not sure,51%,MODERATE_MATCH,MODERATE_MATCH,'amla' is commonly used in COSMETIC products. 'coconut' is commonly used in COSMETIC products.
+Sandalwood Face Pack,"Sandalwood, Multani mitti",Oil control,Cosmetic,India,Not sure,50%,MODERATE_MATCH,MODERATE_MATCH,'sandalwood' is commonly used in COSMETIC products. 'multani mitti' is commonly used in COSMETIC products.
+Rose Water Toner,Rose,Skin toning,Cosmetic,India,No,50%,MODERATE_MATCH,MODERATE_MATCH,'rose' is commonly used in COSMETIC products.
+Lavender Oil,Lavender,Relaxation,Cosmetic,India,Not sure,23%,WEAK_MATCH,WEAK_MATCH,"'lavender' names a plant, food, substance or material, but is not in the ingredient ontology."
+Glycerin Soap,Glycerin,Moisturising,Cosmetic,India,No,50%,MODERATE_MATCH,MODERATE_MATCH,'glycerin' is commonly used in COSMETIC products.
+Chilli Masala,Chilli,Cooking spice,Food,India,No,50%,MODERATE_MATCH,MODERATE_MATCH,'chilli' is commonly used in FOOD products.
+Tulsi Ginger Tea,"Tulsi, Ginger",Immunity drink,Food,India,Not sure,62%,MODERATE_MATCH,MODERATE_MATCH,'tulsi' is commonly used in FOOD products. 'ginger' is commonly used in FOOD products. 'tea' is commonly used in FOOD products.
+Moringa Powder,Moringa,Nutrition supplement,Food,India,Not sure,50%,MODERATE_MATCH,MODERATE_MATCH,'moringa' is commonly used in FOOD products.
+Haldi Doodh Mix,"Turmeric, Ghee",Golden milk,Food,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'turmeric' is commonly used in FOOD products. 'ghee' is commonly used in FOOD products.
+haldi,haldi,haldi,Ayurvedic formulation,India,Not sure,50%,MODERATE_MATCH,MODERATE_MATCH,'turmeric' is commonly used in AYURVEDA / AYUSH products.
+हल्दी,हल्दी,जोड़ों का दर्द,Ayurvedic formulation,India,Yes,50%,MODERATE_MATCH,MODERATE_MATCH,'turmeric' is commonly used in AYURVEDA / AYUSH products.
+नीम साबुन,नीम,त्वचा,Cosmetic,India,Not sure,50%,MODERATE_MATCH,MODERATE_MATCH,'neem' is commonly used in COSMETIC products.
+Ashwaganda Capsule,Ashwaganda,Stress,Ayurvedic formulation,India,Yes,72%,STRONG_MATCH,STRONG_MATCH,'ashwagandha' is commonly used in AYURVEDA / AYUSH products.
+Turmaric Cream,Turmaric,Skin,Cosmetic,India,No,44%,MODERATE_MATCH,MODERATE_MATCH,'turmeric' is commonly used in COSMETIC products.
+Neem Latent Soap,"Neem, Latent",Skin cleansing,Cosmetic,India,Not sure,25%,WEAK_MATCH,WEAK_MATCH,'neem' is commonly used in COSMETIC products.
+Paraben Neem Cream,"Paraben, Neem",Skin,Cosmetic,India,No,33%,WEAK_MATCH,WEAK_MATCH,'neem' is commonly used in COSMETIC products.
+Chilli Cream,Chilli,Skin,Cosmetic,India,Not sure,18%,UNCERTAIN,UNCERTAIN,"'chilli' is a valid ingredient but not a typical COSMETIC ingredient (known uses: food/spice, traditional knowledge, agricultural, research)."
+Garlic Face Serum,Garlic,Skin glow,Cosmetic,India,No,18%,UNCERTAIN,UNCERTAIN,"'garlic' is a valid ingredient but not a typical COSMETIC ingredient (known uses: food/spice, ayush, traditional knowledge, supplement)."
+Latent powder,Latent,Latent,Cosmetic,India,Yes,0%,OUT_OF_SCOPE,OUT_OF_SCOPE,"'latent' is an ordinary word, not a plant, herb, food or material."
+Plastic Bottle,Plastic,Water storage,Cosmetic,India,No,0%,OUT_OF_SCOPE,OUT_OF_SCOPE,"'plastic' is a synthetic/industrial material, outside the Ayurveda/AYUSH/TK/IP scope."
+Steel Spoon,Steel,Eating,Food,India,No,0%,OUT_OF_SCOPE,OUT_OF_SCOPE,"'steel' is a synthetic/industrial material, outside the Ayurveda/AYUSH/TK/IP scope."
+Gaming Laptop,"Silicon, Plastic, Copper",Play video games,Other,India,No,0%,OUT_OF_SCOPE,OUT_OF_SCOPE,"'silicone' is a synthetic/industrial material, outside the Ayurveda/AYUSH/TK/IP scope. 'plastic' is a synthetic/industrial material, outside the Ayurveda/AYUSH/TK/IP scope."
+Shampoo X,Shampoo,Hair wash,Cosmetic,India,No,0%,OUT_OF_SCOPE,OUT_OF_SCOPE,"'Shampoo' is a product type, not an ingredient."
+Happy Cream,"Happy, Car",Skin,Cosmetic,India,No,0%,OUT_OF_SCOPE,OUT_OF_SCOPE,"'happy' is an ordinary word, not a plant, herb, food or material. 'car' is an ordinary word, not a plant, herb, food or material."
+Powder,Powder,Skin,Cosmetic,India,No,0%,OUT_OF_SCOPE,OUT_OF_SCOPE,"'Powder' is only a product form, not an ingredient."
+joi ds f,fh a i,dfd 9df p9,Cosmetic,India,Not sure,0%,INPUT_NOT_RECOGNIZED,REJECTED,"Input not recognised: the product name, ingredients and intended use contain no real word or known ingredient. Please enter real ingredient names (e.g. Neem, Turmeric) and a clear intended use (e.g. skin care, joint pain)."
+asdfghjkl,qwerty987,xyz123,Other,India,No,0%,OUT_OF_SCOPE,OUT_OF_SCOPE,'qwerty987' is not a recognisable ingredient name.
