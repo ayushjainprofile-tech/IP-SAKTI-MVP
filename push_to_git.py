@@ -10,7 +10,7 @@ def run_git():
     print("STDERR:\n", st.stderr)
 
     print("\nAdding updated files...")
-    subprocess.run(["git", "add", "backend/main.py", "backend/source_validator.py", "run_regression_tests.py", "regression_results.csv"], cwd=repo_dir)
+    subprocess.run(["git", "add", "."], cwd=repo_dir)
 
     print("\nCommitting changes...")
     commit_res = subprocess.run(["git", "commit", "-m", "fix: blend ProductContextEngine confidence in calculate_confidence for 80%+ score on classical formulations"], cwd=repo_dir, capture_output=True, text=True)

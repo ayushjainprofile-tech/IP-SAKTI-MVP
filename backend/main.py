@@ -332,6 +332,11 @@ class ProductInput(BaseModel):
         max_length=50
     )
 
+    language: str = Field(
+        default="en",
+        max_length=20
+    )
+
     @field_validator(
         "product_name",
         "purpose",
@@ -8296,20 +8301,22 @@ def analyze_product(
     product: ProductInput
 ):
     
+    target_lang = normalize_language_code(product.language)
+    
     # -----------------------------------------------------
     # LANGUAGE NORMALIZATION (Sarvam AI Translation)
     # Translate all input fields to English to maximize
     # domain evidence hits and ontology matching.
     # -----------------------------------------------------
     if product.product_name:
-        product.product_name = translate_text(product.product_name, source_lang="hi", target_lang="en")
+        product.product_name = translate_text(product.product_name, source_lang=target_lang, target_lang="en")
     if product.purpose:
-        product.purpose = translate_text(product.purpose, source_lang="hi", target_lang="en")
+        product.purpose = translate_text(product.purpose, source_lang=target_lang, target_lang="en")
     
     if product.ingredients:
         translated_ingredients = []
         for ing in product.ingredients:
-            translated_ingredients.append(translate_text(ing, source_lang="hi", target_lang="en"))
+            translated_ingredients.append(translate_text(ing, source_lang=target_lang, target_lang="en"))
         product.ingredients = translated_ingredients
 
 
@@ -8969,7 +8976,7 @@ def analyze_product(
     # FINAL RESPONSE
     # -----------------------------------------------------
 
-    return {
+    final_response = {
         "product_context_engine": {
             "available": PRODUCT_CONTEXT_ENGINE_AVAILABLE,
             "context": _context_to_dict(product_context),
@@ -9124,6 +9131,12 @@ def analyze_product(
                     )
             }
     }
+
+    return translate_analysis_object(
+        final_response,
+        target_lang,
+        source_lang="en"
+    )
 
 
 # =========================================================
