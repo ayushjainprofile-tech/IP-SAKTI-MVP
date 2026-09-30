@@ -61,7 +61,7 @@ export default function Navbar() {
 
         {/* Center: Navigation Links (Desktop) */}
         <div className="navbar-links">
-          <Link to="/" className={`nav-link ${isActive('/')}`}>Home</Link>
+          <button className={`nav-link nav-link-btn ${isActive('/')}`} onClick={() => { closeMenu(); if (location.pathname !== '/') navigate('/'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Home</button>
           <button className="nav-link nav-link-btn" onClick={() => scrollToSection('about')}>About</button>
           <button className="nav-link nav-link-btn" onClick={() => scrollToSection('features')}>Features</button>
           <button className="nav-link nav-link-btn" onClick={() => scrollToSection('contact')}>Contact</button>
